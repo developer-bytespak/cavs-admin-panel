@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --court-line: rgba(11, 31, 69, 0.05);
+  }
+  * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    background: #f6f7f9;
+    color: #111318;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  ::selection { background: rgba(40, 100, 255, 0.16); }
+
+  /* Focus: always visible, never removed */
+  :focus-visible {
+    outline: 2px solid #2864ff;
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  .arena :focus-visible { outline-color: #f05a1a; }
+
+  /* Recessive scrollbars */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(17, 19, 24, 0.13); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(17, 19, 24, 0.24); background-clip: padding-box; }
+  .arena ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); background-clip: padding-box; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---- Surfaces ---------------------------------------------------- */
+  .card {
+    @apply bg-card border border-line rounded-2xl shadow-card;
+  }
+  .card-hover {
+    @apply transition-all duration-200 ease-premium hover:shadow-lift hover:-translate-y-0.5 hover:border-[#DDE1E9];
+  }
+
+  /* ---- Type -------------------------------------------------------- */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.1em] text-ink-3;
+  }
+  .stat {
+    @apply font-display font-semibold tracking-[-0.01em] tabular-nums;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- Basketball visual DNA (decorative, 3–5% opacity) ------------ */
+  .court-arc {
+    background-image:
+      radial-gradient(circle at 50% 118%, transparent 0 27%, var(--court-line) 27% 27.35%, transparent 27.35%),
+      radial-gradient(circle at 50% 118%, transparent 0 11%, var(--court-line) 11% 11.4%, transparent 11.4%);
+  }
+  .court-dots {
+    background-image: radial-gradient(rgba(11, 31, 69, 0.07) 1px, transparent 1px);
+    background-size: 14px 14px;
+  }
+  .arena-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+    background-size: 46px 46px;
+  }
+  .arena-vignette {
+    background:
+      radial-gradient(120% 90% at 50% -10%, rgba(23, 70, 199, 0.30) 0%, transparent 62%),
+      radial-gradient(80% 60% at 50% 120%, rgba(240, 90, 26, 0.16) 0%, transparent 68%);
+  }
+
+  /* ---- Glass: tooltips / palettes / floating menus ONLY ------------ */
+  .glass {
+    background: rgba(255, 255, 255, 0.86);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+  .glass-dark {
+    background: rgba(8, 13, 24, 0.82);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  /* ---- Skeleton ---------------------------------------------------- */
+  .skeleton {
+    @apply relative overflow-hidden bg-line-soft rounded-md;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  }
+
+  /* ---- Chart primitives -------------------------------------------- */
+  .chart-grid line { stroke: #EEF0F4; stroke-width: 1; shape-rendering: crispEdges; }
+  .arena .chart-grid line { stroke: rgba(255,255,255,0.07); }
+  .axis-label { @apply text-[11px] fill-[#9BA1AC] tabular-nums; }
+
+  .draw-line {
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: var(--len);
+    animation: draw 1100ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+}
+
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes spin { to { transform: rotate(360deg); } }
