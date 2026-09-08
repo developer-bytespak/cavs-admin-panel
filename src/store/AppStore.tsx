@@ -14,6 +14,7 @@ import {
   LIVE_GAME_ID, otherEvents,
 } from '../data/mock'
 import { uid } from '../lib/utils'
+import { authenticate, readSession, writeSession, type DemoAccount } from '../data/auth'
 
 export interface Toast {
   id: string
@@ -23,6 +24,11 @@ export interface Toast {
 }
 
 interface AppState {
+  /* Session */
+  isAuthenticated: boolean
+  signIn: (email: string, password: string) => DemoAccount | null
+  signOut: () => void
+
   /* Identity & access */
   role: Role
   setRole: (r: Role) => void
@@ -119,8 +125,14 @@ export const PERMISSION_MATRIX: Record<string, Record<Permission, boolean>> = {
 
 const Ctx = createContext<AppState | null>(null)
 
-export function AppProvider({ children, initialRole = 'admin' }: { children: React.ReactNode; initialRole?: Role }) {
-  const [role, setRoleRaw] = useState<Role>(initialRole)
+export function AppProvider({
+  children, initialRole, initialAuthenticated,
+}: { children: React.ReactNode; initialRole?: Role; initialAuthenticated?: boolean }) {
+  /* A stored session decides both "are we in" and "as whom", so a reload
+     lands you back where you were rather than on the sign-in screen. */
+  const restored = readSession()
+  const [authed, setAuthed] = useState(initialAuthenticated ?? !!restored)
+  const [role, setRoleRaw] = useState<Role>(initialRole ?? restored?.role ?? 'admin')
   const [games, setGames] = useState<GameEvent[]>(() => seedGames.map((g) => ({ ...g })))
   const [practices, setPractices] = useState<PracticeEvent[]>(() => seedPractices.map((p) => ({ ...p })))
   const [registrations, setRegs] = useState<Registration[]>(() => seedRegs.map((r) => ({ ...r })))
@@ -161,8 +173,25 @@ export function AppProvider({ children, initialRole = 'admin' }: { children: Rea
     window.setTimeout(() => { setSyncing(false); setLastSync(new Date()) }, 750)
   }, [])
 
+  const signIn = useCallback((email: string, password: string) => {
+    const account = authenticate(email, password)
+    if (!account) return null
+    writeSession({ email: account.email, role: account.role, name: account.name })
+    setRoleRaw(account.role)
+    setAuthed(true)
+    return account
+  }, [])
+
+  const signOut = useCallback(() => {
+    writeSession(null)
+    setAuthed(false)
+  }, [])
+
   const setRole = useCallback((r: Role) => {
     setRoleRaw(r)
+    /* Keep the stored session in step with the in-app role switcher. */
+    const current = readSession()
+    if (current) writeSession({ ...current, role: r })
     toast({
       tone: 'info',
       title: r === 'admin' ? 'Viewing as Administrator' : 'Viewing as Coach',
@@ -475,6 +504,7 @@ export function AppProvider({ children, initialRole = 'admin' }: { children: Rea
   }, [])
 
   const value: AppState = {
+    isAuthenticated: authed, signIn, signOut,
     role, setRole, user, visibleTeamIds, can,
     games, practices, registrations, players, announcements, notifications, attendance,
     invoices, families,

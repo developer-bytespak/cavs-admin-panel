@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { RequirePermission } from './components/layout/RequirePermission'
+import { RequireAuth, RedirectIfAuthed } from './components/layout/RequireAuth'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Schedule from './pages/Schedule'
@@ -30,9 +31,9 @@ import Help from './pages/Help'
 export default function App() {
   return (
     <Routes>
-      <Route path="/signin" element={<Login />} />
+      <Route path="/signin" element={<RedirectIfAuthed><Login /></RedirectIfAuthed>} />
 
-      <Route element={<AppShell />}>
+      <Route element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Dashboard />} />
 
         <Route path="schedule" element={<Schedule />} />

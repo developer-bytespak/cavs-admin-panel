@@ -123,3 +123,9 @@
 @keyframes draw { to { stroke-dashoffset: 0; } }
 @keyframes rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Ambient light on the sign-in brand panel — deliberately almost imperceptible. */
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: var(--drift-lo, 0.16); }
+  50%      { transform: translate3d(3%, -3%, 0) scale(1.08); opacity: var(--drift-hi, 0.24); }
+}

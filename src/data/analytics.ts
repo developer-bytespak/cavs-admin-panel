@@ -131,7 +131,7 @@ export const newSignups = registrations.filter((r) => {
 }).length
 
 export const metricSparks = {
-  players: [104, 108, 109, 113, 116, 118, 121, 124, 126, 128],
+  players: [98, 102, 104, 108, 111, 113, 116, 118, 119, 120],
   teams: [5, 5, 5, 6, 6, 6, 6, 6, 6, 6],
   games: [2, 4, 1, 3, 5, 2, 3, 4, 2, 3],
   signups: [3, 5, 4, 7, 6, 8, 6, 9, 7, 9],

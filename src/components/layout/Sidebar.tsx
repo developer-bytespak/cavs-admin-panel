@@ -1,6 +1,6 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LifeBuoy, ChevronLeft, X, Lock } from 'lucide-react'
+import { LifeBuoy, ChevronLeft, X, Lock, LogOut } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
 import { PRIMARY_NAV, TEAM_TOOLS_NAV, MANAGE_NAV, FUTURE_NAV, forRole, type NavItem } from './nav'
@@ -77,7 +77,8 @@ function Group({ label, items, collapsed, onNavigate, first }: { label?: string;
 export function Sidebar({
   collapsed, onToggle, mobileOpen, onCloseMobile,
 }: { collapsed: boolean; onToggle: () => void; mobileOpen: boolean; onCloseMobile: () => void }) {
-  const { role, user, lastSync, syncing } = useApp()
+  const { role, user, lastSync, syncing, signOut } = useApp()
+  const navigate = useNavigate()
 
   return (
     <>
@@ -188,6 +189,19 @@ export function Sidebar({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[12.5px] font-medium text-white/90">{user.first} {user.last}</span>
                 <span className="block truncate text-[11px] text-white/40">{user.role}</span>
+              </span>
+            )}
+            {!collapsed && (
+              <span
+                role="button"
+                tabIndex={0}
+                aria-label="Sign out"
+                title="Sign out"
+                onClick={(e) => { e.preventDefault(); signOut(); navigate('/signin', { replace: true }) }}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); signOut(); navigate('/signin', { replace: true }) } }}
+                className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white/35 transition-colors hover:bg-white/10 hover:text-white/80"
+              >
+                <LogOut className="h-[15px] w-[15px]" />
               </span>
             )}
           </NavLink>

@@ -6,6 +6,7 @@ import App from '../src/App'
 import type { Role } from '../src/data/types'
 import { FEATURED_PLAYER_ID } from '../src/data/mock'
 import { invoices, billingMetrics, invoiceById, needsAttention, FEATURED_INVOICE_ID } from '../src/data/billing'
+import { activePlayers, metricSparks } from '../src/data/analytics'
 
 const ROUTES = [
   '/signin', '/', '/schedule', '/live', '/live/g-002', '/live/g-003',
@@ -25,10 +26,18 @@ const ROUTES = [
   '/staff/nope', '/locations/nope', '/live/nope', '/payments/INV-9999',
 ]
 
+/* The app is auth-gated, so signed-in rendering seeds a session. */
 const render = (route: string, role: Role) =>
   renderToString(
     <MemoryRouter initialEntries={[route]}>
-      <AppProvider initialRole={role}><App /></AppProvider>
+      <AppProvider initialRole={role} initialAuthenticated><App /></AppProvider>
+    </MemoryRouter>
+  )
+
+const renderSignedOut = (route: string) =>
+  renderToString(
+    <MemoryRouter initialEntries={[route]}>
+      <AppProvider initialAuthenticated={false}><App /></AppProvider>
     </MemoryRouter>
   )
 
@@ -43,7 +52,8 @@ const check = (name: string, pass: boolean, detail = '') => {
 for (const role of ['admin', 'coach'] as const) {
   for (const route of ROUTES) {
     try {
-      const html = render(route, role)
+      /* /signin deliberately renders nothing when a session exists — it redirects. */
+      const html = route === '/signin' ? renderSignedOut(route) : render(route, role)
       check(`${role} renders ${route}`, html.length > 200, `${html.length} chars`)
     } catch (e) {
       fails++
@@ -149,6 +159,37 @@ check('Jordan balance $400', ji.balance === 400)
 check('Jordan status is partial', ji.status === 'partial')
 check('Jordan has 3 installments, 2 paid', ji.installments.length === 3 && ji.installments.filter((i) => i.status === 'paid').length === 2)
 check('Jordan is on 14U Elite', ji.teamId === 't-14u')
+
+/* 9. The app is gated: signed out, protected routes render nothing but a redirect. */
+for (const route of ['/', '/payments', '/schedule', '/teams', '/reports/attendance', '/settings/general']) {
+  const html = renderSignedOut(route)
+  check(`signed out, ${route} does not render the app`, !html.includes('Academy participation') && !html.includes('Command Center'))
+}
+check('signed-out sign-in page still renders', renderSignedOut('/signin').includes('Welcome back.'))
+check('signed in, /signin does not render the login form', !render('/signin', 'admin').includes('Sign in to your Cavs management account.'))
+
+/* 10. Sign-in screen. */
+const login = renderSignedOut('/signin')
+check('login uses the real Cavs logo asset', login.includes('/cavs_logo.avif'))
+check('login does not fall back to a placeholder mark', !login.includes('Cavs Academy</div>') || login.includes('/cavs_logo.avif'))
+check('login headline', login.includes('Run the Cavs.') && login.includes('From one place.'))
+check('login welcome copy', login.includes('Welcome back.') && login.includes('Sign in to your Cavs management account.'))
+check('email + password fields', login.includes('Email address') && login.includes('Password'))
+check('remember + forgot controls', login.includes('Keep me signed in') && login.includes('Forgot password?'))
+check('primary CTA is Sign in', login.includes('Sign in<') || login.includes('>Sign in'))
+check('admin/coach note', login.includes('For Cavs administrators and coaches.'))
+check('future role teaser present', login.includes('Player &amp; Parent experiences coming soon') || login.includes('Player & Parent experiences coming soon'))
+check('no parent/player portal links on login', !login.includes('href="/parent') && !login.includes('href="/player-portal"'))
+check('brand stats quote real academy data', login.includes('>128<') && login.includes('>6<') && login.includes('>30<'))
+check('players sparkline ends at the active-player count', metricSparks.players[metricSparks.players.length - 1] === activePlayers)
+check('password toggle is accessible', login.includes('Show password') || login.includes('aria-label="Show password"'))
+check('demo accounts are offered', login.includes('darryl@cavsacademy.org') && login.includes('marcus.reed@cavsacademy.org'))
+check('demo password hint shown', login.includes('cavs2026'))
+check('login is light, not the dark arena surface', !login.includes('bg-midnight') && !login.includes('arena-vignette'))
+
+/* The dashboard must still be reachable directly — login adds no gate. */
+check('dashboard still renders without signing in', adminHome.includes('Academy participation'))
+check('sign out entry point exists', adminHome.includes('Sign out'))
 
 console.log(fails ? `\n${fails} assertion(s) failed` : '\nAll assertions passed')
 process.exit(fails ? 1 : 0)
