@@ -3,10 +3,13 @@ import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Users, Phone, Mail, ArrowRightLeft, MessageSquare, CalendarDays, MapPin,
-  StickyNote, Plus, TrendingUp, TrendingDown, Minus, CreditCard, ClipboardCheck,
+  StickyNote, Plus, TrendingUp, TrendingDown, Minus, CreditCard, ClipboardCheck, ArrowRight,
 } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { teams, teamById, staffById, locationById, rosterOf, developmentLog, d, PROGRAMS } from '../data/mock'
+import { methodLabel } from '../data/billing'
+import { InvoiceStatusBadge } from '../components/billing/InvoiceStatusBadge'
+import { InstallmentTimeline, BalanceBar } from '../components/billing/InstallmentTimeline'
 import type { CalEvent } from '../data/types'
 import { cn, fmtDate, fmtTime, money, relativeDay } from '../lib/utils'
 import { SERIES } from '../lib/palette'
@@ -37,7 +40,7 @@ const TABS = [
 
 export default function PlayerDetail() {
   const { playerId } = useParams()
-  const { players, games, practices, payments, role, visibleTeamIds, assignPlayerTeam, toast, can } = useApp()
+  const { players, games, practices, invoices, families, role, visibleTeamIds, assignPlayerTeam, toast, can } = useApp()
   const [tab, setTab] = useState('overview')
   const [moving, setMoving] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
@@ -70,8 +73,15 @@ export default function PlayerDetail() {
 
   const team = teamById(player.teamId)
   const coach = team ? staffById(team.coachId) : undefined
-  const payment = payments.find((p) => p.playerId === player.id)
-  const program = team ? (team.division === 'Elite' ? PROGRAMS[0] : team.division === 'Select' ? PROGRAMS[1] : PROGRAMS[2]) : PROGRAMS[3]
+  const playerInvoices = invoices.filter((i) => i.playerId === player.id)
+  const payment = playerInvoices[0]
+  const family = families.find((f) => f.familyName === payment?.familyName)
+  const billed = playerInvoices.reduce((s, i) => s + i.total, 0)
+  const paidTotal = playerInvoices.reduce((s, i) => s + i.paid, 0)
+  const owed = playerInvoices.reduce((s, i) => s + i.balance, 0)
+  const program = payment
+    ? { label: payment.program, fee: payment.total }
+    : (team ? (team.division === 'Elite' ? PROGRAMS[0] : team.division === 'Select' ? PROGRAMS[1] : PROGRAMS[2]) : PROGRAMS[3])
   const dev = developmentLog.find((x) => x.playerId === player.id)?.entries
 
   const upcoming: CalEvent[] = team
@@ -120,9 +130,15 @@ export default function PlayerDetail() {
           tone={player.attendance >= 90 ? 'good' : player.attendance >= 80 ? 'neutral' : 'warn'} />
         <SummaryCard label="Registration" value={player.registration === 'completed' ? 'Complete' : player.registration === 'review' ? 'In review' : player.registration[0].toUpperCase() + player.registration.slice(1)}
           sub={`${program.label} · ${money(program.fee)}`} tone={player.registration === 'completed' ? 'good' : 'warn'} />
-        <SummaryCard label="Payments" value={player.payment === 'paid' ? 'Paid' : player.payment === 'pending' ? 'Pending' : 'Overdue'}
-          sub={payment ? `${money(payment.amount)} · due ${fmtDate(payment.due, 'short')}` : 'No invoice on file'}
-          tone={player.payment === 'paid' ? 'good' : player.payment === 'pending' ? 'warn' : 'bad'} />
+        <SummaryCard
+          label="Payments"
+          value={payment ? (payment.balance === 0 ? 'Paid' : money(payment.balance)) : '—'}
+          sub={payment
+            ? (payment.balance === 0
+              ? `${money(payment.total)} settled in full`
+              : `${money(payment.paid)} of ${money(payment.total)}${payment.nextDue ? ` · next ${fmtDate(payment.nextDue, 'short')}` : ''}`)
+            : 'No invoice on file'}
+          tone={!payment ? 'neutral' : payment.balance === 0 ? 'good' : payment.status === 'overdue' || payment.status === 'failed' ? 'bad' : 'warn'} />
         <SummaryCard label="Evaluation" value={player.evaluation.toFixed(1)}
           sub={player.evaluation >= 8.5 ? 'Elite track' : player.evaluation >= 7.5 ? 'Select track' : 'Development track'} tone="neutral" />
       </motion.div>
@@ -354,35 +370,53 @@ export default function PlayerDetail() {
 
       {/* -------------------- Payments -------------------- */}
       {tab === 'payments' && role === 'admin' && (
-        <motion.div variants={stagger.item} className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
-          <Card>
-            <CardHeader eyebrow="Balance" title="Season dues" action={<StatusBadge status={player.payment} />} />
-            <div className="stat mt-4 text-[38px] leading-none text-ink">{money(payment?.amount ?? program.fee)}</div>
-            <div className="mt-1 text-[12.5px] text-ink-3">{program.label}</div>
-            <dl className="mt-4 divide-y divide-line-soft border-t border-line-soft">
-              <InfoRow label="Due date" value={payment ? fmtDate(payment.due, 'medium') : '—'} />
-              <InfoRow label="Method" value={payment?.method ?? '—'} />
-              <InfoRow label="Family" value={payment?.family ?? `${player.guardian.name.split(' ')[1]} Family`} />
-            </dl>
-            {payment && (
-              <Link to={`/payments/${payment.id}`} className="mt-4 block">
-                <Button variant="secondary" icon={CreditCard} className="w-full">Open payment record</Button>
-              </Link>
-            )}
-          </Card>
-          <Card padded={false}>
-            <div className="px-5 pb-2 pt-5"><CardHeader eyebrow="Ledger" title="Payment history" /></div>
-            <ol className="px-5 pb-5">
-              {(payment?.history ?? []).map((h, i) => (
-                <li key={h.id} className={cn('flex items-center gap-3 py-3', i > 0 && 'border-t border-line-soft')}>
-                  <span className="w-[86px] shrink-0 text-[12.5px] text-ink-3">{fmtDate(h.date, 'short')}</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{h.label}</span>
-                  <span className="stat text-[14px] text-ink">{h.amount !== null ? money(h.amount) : '—'}</span>
-                </li>
-              ))}
-              {!payment && <li className="py-6 text-center text-[13px] text-ink-3">No payment records on file for this player.</li>}
-            </ol>
-          </Card>
+        <motion.div variants={stagger.item} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <SummaryCard label="Total billed" value={money(billed)} sub={`${playerInvoices.length} invoice${playerInvoices.length === 1 ? '' : 's'}`} tone="neutral" />
+            <SummaryCard label="Total paid" value={money(paidTotal)} sub="Received to date" tone="good" />
+            <SummaryCard label="Outstanding" value={money(owed)} sub={owed > 0 ? 'Still to collect' : 'Nothing owed'} tone={owed > 0 ? 'warn' : 'good'} />
+            <SummaryCard label="Account credit" value={money(family?.credit ?? 0)} sub={family?.credit ? 'Available to apply' : 'No credit on file'} tone="neutral" />
+            <SummaryCard
+              label="AutoPay"
+              value={payment?.autopay ? 'On' : 'Off'}
+              sub={payment ? methodLabel(payment.method) : 'No method on file'}
+              tone={payment?.autopay ? 'good' : 'neutral'} />
+          </div>
+
+          {playerInvoices.length === 0 ? (
+            <Card><EmptyState icon={CreditCard} title="No invoices for this player"
+              description="Invoices appear here once the player is registered for a program." /></Card>
+          ) : playerInvoices.map((inv) => (
+            <Card key={inv.id} padded={false}>
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line-soft px-5 py-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Link to={`/payments/${inv.id}`} className="font-display text-[17px] font-semibold uppercase tracking-[0.04em] text-ink hover:text-royal">
+                      {inv.id}
+                    </Link>
+                    <InvoiceStatusBadge status={inv.status} size="xs" />
+                  </div>
+                  <p className="mt-0.5 text-[12.5px] text-ink-3">{inv.description} · {inv.planName}</p>
+                </div>
+                <div className="text-right">
+                  <div className="stat text-[24px] leading-none text-ink">{money(inv.balance)}</div>
+                  <div className="mt-1 text-[11.5px] text-ink-4">balance of {money(inv.total)}</div>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <BalanceBar paid={inv.paid} total={inv.total} className="mb-4" />
+                <InstallmentTimeline installments={inv.installments} />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-soft bg-[#FBFCFD] px-5 py-3">
+                <span className="text-[12px] text-ink-3">
+                  {inv.nextDue ? `Next installment ${fmtDate(inv.nextDue, 'medium')}` : 'No further installments scheduled'}
+                </span>
+                <Link to={`/payments/${inv.id}`}>
+                  <Button size="sm" variant="secondary" iconRight={ArrowRight}>Open invoice</Button>
+                </Link>
+              </div>
+            </Card>
+          ))}
         </motion.div>
       )}
 

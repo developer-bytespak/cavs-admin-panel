@@ -14,7 +14,7 @@ import Registrations from './pages/Registrations'
 import RegistrationDetail from './pages/RegistrationDetail'
 import Evaluations from './pages/Evaluations'
 import Payments from './pages/Payments'
-import PaymentDetail from './pages/PaymentDetail'
+import InvoiceDetail from './pages/InvoiceDetail'
 import Communications from './pages/Communications'
 import Reports from './pages/Reports'
 import Staff from './pages/Staff'
@@ -51,7 +51,7 @@ export default function App() {
         <Route path="registrations/:regId" element={<RequirePermission permission="view.registrations" area="Registrations"><RegistrationDetail /></RequirePermission>} />
 
         <Route path="payments" element={<RequirePermission permission="view.payments" area="Payments"><Payments /></RequirePermission>} />
-        <Route path="payments/:paymentId" element={<RequirePermission permission="view.payments" area="Payments"><PaymentDetail /></RequirePermission>} />
+        <Route path="payments/:invoiceId" element={<RequirePermission permission="view.payments" area="Payments"><InvoiceDetail /></RequirePermission>} />
 
         <Route path="communications" element={<Communications />} />
 

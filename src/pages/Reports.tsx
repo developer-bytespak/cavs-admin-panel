@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Download, TrendingUp, TrendingDown, Target, Users, ClipboardList, Wallet, Activity, AlertTriangle,
+  Download, TrendingUp, TrendingDown, Target, Users, ClipboardList, Activity, AlertTriangle,
 } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { teams, staff, rosterOf, teamById } from '../data/mock'
 import {
   pulse30, buildPulse, RANGES, type RangeKey, attendanceByTeam, attendanceWeeks,
   heatmap, HEAT_DAYS, funnel, registrationTrend, registrationsByProgram,
-  paymentTrend, participationByTeam, collected, pendingTotal, overdueTotal,
+  participationByTeam,
 } from '../data/analytics'
-import { money } from '../lib/utils'
+import {
+  billingMetrics, collectionsByMonth, upcomingInstallments, byTeam, byProgram, needsAttention,
+} from '../data/billing'
+import { PaymentHealth, HEALTH_COLORS } from '../components/billing/PaymentHealth'
+import { cn, fmtDate, money } from '../lib/utils'
 import { SERIES, STATUS } from '../lib/palette'
 import { stagger } from '../components/layout/AppShell'
 import { PageHeader } from '../components/layout/PageHeader'
@@ -27,7 +31,6 @@ import { TrendChart } from '../components/charts/TrendChart'
 import { BarCompare } from '../components/charts/BarCompare'
 import { Heatmap } from '../components/charts/Heatmap'
 import { FunnelFlow } from '../components/charts/FunnelFlow'
-import { PaymentArc, PAY_SEGMENT_COLORS } from '../components/charts/PaymentArc'
 import { InsightCard } from '../components/domain/MetricCard'
 import { DataTable, type Column } from '../components/ui/DataTable'
 
@@ -41,7 +44,7 @@ const CATEGORIES = [
 export default function Reports() {
   const { category = 'attendance' } = useParams()
   const navigate = useNavigate()
-  const { toast, registrations, payments } = useApp()
+  const { toast, registrations, invoices } = useApp()
   const [range, setRange] = useState<RangeKey>('30d')
   const [team, setTeam] = useState('all')
   const [coach, setCoach] = useState('all')
@@ -122,7 +125,7 @@ export default function Reports() {
         <>
           {category === 'attendance' && <AttendanceReport pulse={pulse} scopedTeams={scopedTeams} range={range} />}
           {category === 'registrations' && <RegistrationReport registrations={registrations} />}
-          {category === 'payments' && <PaymentReport payments={payments} />}
+          {category === 'payments' && <PaymentReport invoices={invoices} />}
           {category === 'participation' && <ParticipationReport scopedTeams={scopedTeams} />}
         </>
       )}
@@ -294,53 +297,121 @@ function RegistrationReport({ registrations }: { registrations: ReturnType<typeo
 }
 
 /* ================= Payments ================= */
-function PaymentReport({ payments }: { payments: ReturnType<typeof useApp>['payments'] }) {
-  const total = collected + pendingTotal + overdueTotal
+function PaymentReport({ invoices }: { invoices: ReturnType<typeof useApp>['invoices'] }) {
+  const m = billingMetrics(invoices)
+  const trend = collectionsByMonth(invoices, 6)
+  const upcoming = upcomingInstallments(invoices, 30)
+  const teamRows = byTeam(invoices)
+  const programRows = byProgram(invoices)
+  const attention = invoices.filter(needsAttention)
+
   const segments = [
-    { key: 'paid', label: 'Paid', value: (collected / total) * 100, amount: collected, color: PAY_SEGMENT_COLORS.paid },
-    { key: 'pending', label: 'Pending', value: (pendingTotal / total) * 100, amount: pendingTotal, color: PAY_SEGMENT_COLORS.pending },
-    { key: 'overdue', label: 'Overdue', value: (overdueTotal / total) * 100, amount: overdueTotal, color: PAY_SEGMENT_COLORS.overdue },
+    { key: 'paid', label: 'Paid', amount: m.collected, color: HEALTH_COLORS.paid },
+    { key: 'upcoming', label: 'Upcoming', amount: m.upcoming + m.dueSoon, color: HEALTH_COLORS.upcoming },
+    { key: 'overdue', label: 'Overdue', amount: m.overdue, color: HEALTH_COLORS.overdue },
+    { key: 'failed', label: 'Failed', amount: m.failed, color: HEALTH_COLORS.failed },
   ]
-  const byProgram = [...new Set(payments.map((p) => p.program))].map((prog) => ({
-    id: prog, label: prog,
-    value: payments.filter((p) => p.program === prog).reduce((s, p) => s + p.amount, 0),
-    sub: `${payments.filter((p) => p.program === prog).length} families`,
-  }))
+
+  const tableRows = teamRows.map((t) => ({ ...t, id: t.teamId }))
+  const cols: Column<(typeof tableRows)[number]>[] = [
+    { key: 'team', header: 'Team', sortValue: (r) => r.name, render: (r) => {
+      const t = teamById(r.teamId)!
+      return (
+        <div className="flex items-center gap-2.5">
+          <TeamCrest short={t.short} color={t.color} size="sm" />
+          <div><div className="font-medium text-ink">{r.name}</div><div className="text-[12px] text-ink-3">{r.invoices} invoices</div></div>
+        </div>
+      )
+    } },
+    { key: 'collected', header: 'Collected', align: 'right', sortValue: (r) => r.collected, render: (r) => <span className="tabular-nums text-ink-2">{money(r.collected)}</span> },
+    { key: 'outstanding', header: 'Outstanding', align: 'right', sortValue: (r) => r.outstanding, render: (r) => (
+      <span className={cn('tabular-nums', r.outstanding > 0 ? 'text-orange' : 'text-ink-4')}>{money(r.outstanding)}</span>
+    ) },
+    { key: 'rate', header: 'Collection rate', align: 'right', sortValue: (r) => r.rate, render: (r) => (
+      <span className="stat text-[14px] text-ink">{r.rate.toFixed(1)}%</span>
+    ) },
+  ]
 
   return (
     <motion.div variants={stagger.item} className="space-y-4">
+      {/* 1 major trend graph */}
       <ChartCard
         eyebrow="Primary"
-        title="Collections over time"
-        subtitle="Monthly collected dues against the outstanding balance"
-        legend={[{ key: 'collected', label: 'Collected', color: SERIES[0] }, { key: 'outstanding', label: 'Outstanding', color: STATUS.warn }]}
-        table={{ head: ['Month', 'Collected', 'Outstanding'], rows: paymentTrend.map((p) => [p.label, money(p.collected), money(p.outstanding)]) }}
+        title="Collected over time"
+        subtitle="Monthly collections against balances that fell overdue"
+        legend={[{ key: 'collected', label: 'Collected', color: SERIES[0] }, { key: 'outstanding', label: 'Fell overdue', color: STATUS.warn }]}
+        table={{ head: ['Month', 'Collected', 'Overdue'], rows: trend.map((t) => [t.label, money(t.collected), money(t.outstanding)]) }}
       >
-        <TrendChart height={296} minZero yFormat={(v) => `$${Math.round(v / 1000)}k`}
-          data={paymentTrend.map((p) => ({ label: p.label, collected: p.collected, outstanding: p.outstanding }))}
+        <TrendChart height={300} minZero yFormat={(v) => `$${Math.round(v / 1000)}k`}
+          data={trend.map((t) => ({ label: t.label, collected: t.collected, outstanding: t.outstanding }))}
           series={[
             { key: 'collected', label: 'Collected', color: SERIES[0], area: true },
-            { key: 'outstanding', label: 'Outstanding', color: STATUS.warn },
+            { key: 'outstanding', label: 'Fell overdue', color: STATUS.warn },
           ]} />
       </ChartCard>
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <ChartCard eyebrow="Distribution" title="Payment status" subtitle="Share of the season ledger by state"
-          table={{ head: ['Status', 'Amount', 'Share'], rows: segments.map((s) => [s.label, money(s.amount), `${s.value.toFixed(0)}%`]) }}>
-          <PaymentArc segments={segments} total={collected} size={250} caption="this season" />
+      {/* 1 custom payment-health visualisation + 2 supporting comparisons */}
+      <div className="grid gap-4 xl:grid-cols-[1fr_1.4fr]">
+        <ChartCard eyebrow="Payment health" title="Collection position" subtitle="Everything billed this season"
+          table={{ head: ['Bucket', 'Amount'], rows: segments.map((x) => [x.label, money(x.amount)]) }}>
+          <PaymentHealth collected={m.collected} rate={m.collectionRate} segments={segments}
+            needsAttention={0} size={244} trend="↑ 8.4% vs last month" />
         </ChartCard>
-        <ChartCard eyebrow="Breakdown" title="Revenue by program" subtitle="Total invoiced across the season"
-          table={{ head: ['Program', 'Invoiced'], rows: byProgram.map((p) => [p.label, money(p.value)]) }}>
-          <div className="pt-2"><BarCompare data={byProgram} format={(v) => money(v)} /></div>
-        </ChartCard>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ChartCard eyebrow="By team" title="Collected by team" subtitle="Season to date"
+            table={{ head: ['Team', 'Collected'], rows: teamRows.map((t) => [t.name, money(t.collected)]) }}>
+            <div className="pt-1">
+              <BarCompare data={teamRows.map((t) => ({
+                id: t.teamId, label: t.name, value: t.collected,
+                color: SERIES[teams.findIndex((x) => x.id === t.teamId) % SERIES.length],
+              }))} format={(v) => money(v)} />
+            </div>
+          </ChartCard>
+          <ChartCard eyebrow="By program" title="Revenue by program" subtitle="Collected across the season"
+            table={{ head: ['Program', 'Collected', 'Outstanding'], rows: programRows.map((p) => [p.label, money(p.collected), money(p.outstanding)]) }}>
+            <div className="pt-1">
+              <BarCompare data={programRows.map((p) => ({
+                id: p.label, label: p.label, value: p.collected, sub: `${money(p.outstanding)} outstanding`,
+              }))} format={(v) => money(v)} />
+            </div>
+          </ChartCard>
+        </div>
       </div>
 
+      {/* 4 insight cards */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <InsightCard tone="good" icon={Wallet} value={money(collected)} label="Collected this season" sub={`${Math.round((collected / total) * 100)}% of the ledger`} />
-        <InsightCard tone="warn" icon={Activity} value={money(pendingTotal)} label="Pending, not yet due" sub={`${payments.filter((p) => p.status === 'pending').length} invoices`} />
-        <InsightCard tone="bad" icon={AlertTriangle} value={money(overdueTotal)} label="Overdue balance" sub={`${payments.filter((p) => p.status === 'overdue').length} families past due`} />
-        <InsightCard tone="neutral" icon={TrendingUp} value={money(Math.round(collected / (payments.filter((p) => p.status === 'paid').length || 1)))}
-          label="Average payment" sub={`${payments.length} total records`} />
+        <InsightCard tone="good" icon={Target} value={`${m.collectionRate.toFixed(1)}%`} label="Collection rate" sub="Of everything already due" />
+        <InsightCard tone="good" icon={TrendingUp} value="↑ 8.4%" label="Collection improved this month" sub="vs the previous 30 days" />
+        <InsightCard tone="bad" icon={AlertTriangle} value={money(m.overdue)} label="Currently overdue" sub={`${m.overdueCount} accounts past due`} />
+        <InsightCard tone="warn" icon={Users} value={String(m.needsAttention)} label="Families need attention" sub="Overdue, failed or missing a method" />
+      </div>
+
+      {/* Upcoming installments + supporting table */}
+      <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr]">
+        <ChartCard eyebrow="Next 30 days" title="Upcoming installments"
+          subtitle={`${money(upcoming.reduce((s, u) => s + u.installment.amount, 0))} scheduled to collect`}
+          table={{ head: ['Player', 'Amount', 'Due'], rows: upcoming.slice(0, 20).map((u) => [u.invoice.playerName, money(u.installment.amount), u.installment.dueDate]) }}>
+          <div className="space-y-2 pt-1">
+            {upcoming.length === 0 && (
+              <p className="py-8 text-center text-[13px] text-ink-3">Nothing scheduled in the next 30 days.</p>
+            )}
+            {upcoming.slice(0, 6).map(({ invoice, installment }) => (
+              <div key={`${invoice.id}-${installment.id}`} className="flex items-center gap-3 rounded-lg px-1 py-1.5">
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-royal" />
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{invoice.playerName}</span>
+                <span className="shrink-0 text-[11.5px] text-ink-4">{fmtDate(installment.dueDate, 'short')}</span>
+                <span className="stat shrink-0 text-[14px] text-ink">{money(installment.amount)}</span>
+              </div>
+            ))}
+            {upcoming.length > 6 && (
+              <p className="pt-1 text-[11.5px] text-ink-4">+{upcoming.length - 6} more installments scheduled</p>
+            )}
+          </div>
+        </ChartCard>
+
+        <DataTable rows={tableRows} columns={cols} initialSort={{ key: 'collected', dir: 'desc' }}
+          footer={`${money(m.collected)} collected · ${money(m.outstanding)} outstanding · ${attention.length} accounts need attention`} />
       </div>
     </motion.div>
   )

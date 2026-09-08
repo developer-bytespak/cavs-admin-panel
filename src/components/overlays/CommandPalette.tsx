@@ -3,17 +3,17 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
   Search, Users, Shield, CalendarDays, ClipboardList, CreditCard, Radio,
-  CornerDownLeft, ArrowUp, ArrowDown, Plus, Megaphone, MapPin, BarChart3,
+  CornerDownLeft, ArrowUp, ArrowDown, Plus, Megaphone, MapPin, BarChart3, UserCog,
 } from 'lucide-react'
-import { cn, fmtDate, fmtTime } from '../../lib/utils'
+import { cn, fmtDate, fmtTime, money } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
-import { teams, locations, teamById, playerName } from '../../data/mock'
+import { teams, locations, staff, teamById, playerName } from '../../data/mock'
 
 interface Result {
   id: string
   title: string
   subtitle: string
-  group: 'Players' | 'Teams' | 'Games' | 'Registrations' | 'Payments' | 'Locations' | 'Actions' | 'Go to'
+  group: 'Players' | 'Teams' | 'Games' | 'Registrations' | 'Invoices' | 'Staff' | 'Locations' | 'Actions' | 'Go to'
   icon: React.ComponentType<{ className?: string }>
   to: string
   accent?: boolean
@@ -24,12 +24,12 @@ const QUICK_LINKS: Result[] = [
   { id: 'go-sched', title: 'Schedule', subtitle: 'Calendar, games and practices', group: 'Go to', icon: CalendarDays, to: '/schedule' },
   { id: 'go-live', title: 'Live Games', subtitle: 'Score control and game status', group: 'Go to', icon: Radio, to: '/live' },
   { id: 'go-regs', title: 'Registrations', subtitle: 'Pipeline and intake review', group: 'Go to', icon: ClipboardList, to: '/registrations' },
-  { id: 'go-pay', title: 'Payments', subtitle: 'Collections and dues', group: 'Go to', icon: CreditCard, to: '/payments' },
+  { id: 'go-pay', title: 'Payments', subtitle: 'Invoices, plans and collections', group: 'Go to', icon: CreditCard, to: '/payments' },
   { id: 'go-comm', title: 'Communications', subtitle: 'Broadcasts and announcements', group: 'Go to', icon: Megaphone, to: '/communications' },
 ]
 
 export function CommandPalette() {
-  const { paletteOpen, setPaletteOpen, players, games, registrations, payments, role, visibleTeamIds, openCreate } = useApp()
+  const { paletteOpen, setPaletteOpen, players, games, registrations, invoices, role, visibleTeamIds, openCreate } = useApp()
   const [q, setQ] = useState('')
   const [idx, setIdx] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -88,11 +88,30 @@ export function CommandPalette() {
           out.push({ id: r.id, title: `${r.playerName} Evaluation`, subtitle: `Registration · ${r.program} · ${r.stage}`, group: 'Registrations', icon: ClipboardList, to: `/registrations/${r.id}` })
         }
       }
-      for (const p of payments) {
-        if (p.family.toLowerCase().includes(term) || p.playerName.toLowerCase().includes(term)) {
-          out.push({ id: p.id, title: p.family, subtitle: `Payment · ${p.program} · ${p.status}`, group: 'Payments', icon: CreditCard, to: `/payments/${p.id}` })
+      for (const inv of invoices) {
+        const hit = inv.playerName.toLowerCase().includes(term)
+          || inv.familyName.toLowerCase().includes(term)
+          || inv.id.toLowerCase().includes(term)
+        if (hit) {
+          out.push({
+            id: inv.id, title: inv.id,
+            subtitle: `${inv.playerName} · ${inv.balance > 0 ? `${money(inv.balance)} due` : 'Paid in full'}`,
+            group: 'Invoices', icon: CreditCard, to: `/payments/${inv.id}`,
+            accent: inv.status === 'overdue' || inv.status === 'failed',
+          })
         }
         if (out.length > 40) break
+      }
+    }
+    if (role === 'admin') {
+      for (const st of staff) {
+        if (`${st.first} ${st.last}`.toLowerCase().includes(term)) {
+          out.push({
+            id: st.id, title: `${st.first} ${st.last}`,
+            subtitle: `${st.role} · ${st.teams.length ? st.teams.map((t) => teamById(t)?.short).filter(Boolean).join(', ') : 'Academy-wide'}`,
+            group: 'Staff', icon: UserCog, to: `/staff/${st.id}`,
+          })
+        }
       }
     }
     for (const l of locations) {
@@ -101,7 +120,7 @@ export function CommandPalette() {
       }
     }
     return out.slice(0, 24)
-  }, [q, players, games, registrations, payments, role, visibleTeamIds])
+  }, [q, players, games, registrations, invoices, role, visibleTeamIds])
 
   const go = (r: Result) => {
     setPaletteOpen(false)

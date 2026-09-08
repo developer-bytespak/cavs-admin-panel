@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowUpRight, TrendingUp, ClipboardList, Target, Wallet, Users, CalendarDays, Trophy, Dumbbell, UserPlus,
@@ -8,9 +8,10 @@ import { useApp } from '../store/AppStore'
 import { teams, teamById, rosterOf, d, otherEvents } from '../data/mock'
 import {
   pulse30, buildPulse, RANGES, type RangeKey, funnel, heatmap, HEAT_DAYS,
-  collected, pendingTotal, overdueTotal, outstanding, familiesNeedingAttention,
   activePlayers, newSignups, metricSparks, attendanceByTeam,
 } from '../data/analytics'
+import { billingMetrics } from '../data/billing'
+import { PaymentHealth, HEALTH_COLORS } from '../components/billing/PaymentHealth'
 import type { CalEvent } from '../data/types'
 import { cn, money, relativeDay, timeUntil } from '../lib/utils'
 import { SERIES } from '../lib/palette'
@@ -31,7 +32,6 @@ import { AttendanceOrbit } from '../components/charts/AttendanceOrbit'
 import { ActivityOrbit } from '../components/charts/ActivityOrbit'
 import { FunnelFlow } from '../components/charts/FunnelFlow'
 import { Heatmap } from '../components/charts/Heatmap'
-import { PaymentArc, PAY_SEGMENT_COLORS } from '../components/charts/PaymentArc'
 import { CapacityBar } from '../components/charts/BarCompare'
 
 const PULSE_METRICS = [
@@ -42,11 +42,12 @@ const PULSE_METRICS = [
 ] as const
 
 export default function Dashboard() {
-  const { role, games, practices, registrations, players, visibleTeamIds } = useApp()
+  const { role, games, practices, registrations, players, invoices, visibleTeamIds } = useApp()
   const [drawerEvent, setDrawerEvent] = useState<CalEvent | null>(null)
   const [range, setRange] = useState<RangeKey>('30d')
   const [metric, setMetric] = useState<(typeof PULSE_METRICS)[number]['key']>('attendance')
   const [compare, setCompare] = useState(true)
+  const navigate = useNavigate()
 
   const isCoach = role === 'coach'
   const myTeams = useMemo(() => (isCoach ? teams.filter((t) => visibleTeamIds.includes(t.id)) : teams), [isCoach, visibleTeamIds])
@@ -93,10 +94,12 @@ export default function Dashboard() {
   })
   const academyAttendance = Math.round(myTeams.reduce((s, t) => s + t.attendance, 0) / myTeams.length)
 
+  const money$ = useMemo(() => billingMetrics(invoices), [invoices])
   const paySegments = [
-    { key: 'paid', label: 'Paid', value: (collected / (collected + outstanding)) * 100, amount: collected, color: PAY_SEGMENT_COLORS.paid },
-    { key: 'pending', label: 'Pending', value: (pendingTotal / (collected + outstanding)) * 100, amount: pendingTotal, color: PAY_SEGMENT_COLORS.pending },
-    { key: 'overdue', label: 'Overdue', value: (overdueTotal / (collected + outstanding)) * 100, amount: overdueTotal, color: PAY_SEGMENT_COLORS.overdue },
+    { key: 'paid', label: 'Paid', amount: money$.collected, color: HEALTH_COLORS.paid },
+    { key: 'upcoming', label: 'Upcoming', amount: money$.upcoming + money$.dueSoon, color: HEALTH_COLORS.upcoming },
+    { key: 'overdue', label: 'Overdue', amount: money$.overdue, color: HEALTH_COLORS.overdue },
+    { key: 'failed', label: 'Failed', amount: money$.failed, color: HEALTH_COLORS.failed },
   ]
 
   const nextGame = scopedGames
@@ -308,23 +311,30 @@ export default function Dashboard() {
           <ChartCard
             eyebrow="Payment health"
             title="Season collections"
-            subtitle={`${money(outstanding)} outstanding across ${familiesNeedingAttention} families`}
+            subtitle={`${money(money$.outstanding)} outstanding across ${money$.needsAttention} families`}
             controls={<Link to="/payments"><Button size="xs" variant="ghost" iconRight={ArrowUpRight}>Ledger</Button></Link>}
             table={{
-              head: ['Status', 'Amount', 'Share'],
-              rows: paySegments.map((s) => [s.label, money(s.amount), `${s.value.toFixed(0)}%`]),
+              head: ['Bucket', 'Amount'],
+              rows: paySegments.map((s) => [s.label, money(s.amount)]),
             }}
             footer={
-              <Link to="/payments?status=overdue" className="group flex items-center gap-2 text-[12.5px]">
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-orange-tint text-[#C24A12]">
-                  <Wallet className="h-3.5 w-3.5" />
-                </span>
-                <span className="font-medium text-ink">{familiesNeedingAttention} families need attention</span>
-                <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-ink-4 transition-transform group-hover:-translate-y-0.5" />
-              </Link>
+              <div className="grid grid-cols-4 gap-2">
+                <FooterStat label="Collected" value={`$${(money$.collected / 1000).toFixed(1)}K`} />
+                <FooterStat label="Outstanding" value={`$${(money$.outstanding / 1000).toFixed(1)}K`} />
+                <FooterStat label="Rate" value={`${Math.round(money$.collectionRate)}%`} />
+                <FooterStat label="Attention" value={String(money$.needsAttention)} accent />
+              </div>
             }
           >
-            <PaymentArc segments={paySegments} total={collected} size={230} caption="this season" />
+            <PaymentHealth
+              collected={money$.collected}
+              rate={money$.collectionRate}
+              segments={paySegments}
+              needsAttention={money$.needsAttention}
+              onAttentionClick={() => navigate('/payments?view=attention')}
+              size={228}
+              trend="↑ 8.4% vs last month"
+            />
           </ChartCard>
         )}
 
@@ -380,6 +390,10 @@ export default function Dashboard() {
           <SectionTitle>What needs your attention</SectionTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             <InsightCard tone="good" icon={TrendingUp} value="↑ 8.4%" label="Attendance improved this month" sub="Driven by 14U Elite and Lady Cavs" />
+            {!isCoach && money$.failedCount > 0 && (
+              <InsightCard tone="bad" icon={Wallet} to="/payments?view=attention" value={String(money$.failedCount)}
+                label="Failed payments require attention" sub={`${money(money$.failed)} could not be charged`} />
+            )}
             {!isCoach && (
               <InsightCard tone="warn" icon={ClipboardList} to="/registrations"
                 value={String(registrations.filter((r) => r.stage === 'new' || r.stage === 'review').length)}
@@ -388,7 +402,8 @@ export default function Dashboard() {
             <InsightCard tone="neutral" icon={Target} value={String(myTeams.filter((t) => t.attendance >= 90).length)}
               label="Teams above 90% attendance" sub={myTeams.filter((t) => t.attendance >= 90).map((t) => t.name).join(', ')} />
             {!isCoach ? (
-              <InsightCard tone="bad" icon={Wallet} to="/payments" value={money(outstanding)} label="Outstanding dues" sub={`${familiesNeedingAttention} families · ${money(overdueTotal)} overdue`} />
+              <InsightCard tone="bad" icon={Wallet} to="/payments?view=attention" value={money(money$.outstanding)}
+                label="Outstanding dues" sub={`${money$.needsAttention} families · ${money(money$.overdue)} overdue`} />
             ) : (
               <InsightCard tone="accent" icon={Users} to="/attendance" value="3" label="Players below 80% attendance" sub="Worth a check-in this week" />
             )}
@@ -421,6 +436,15 @@ export default function Dashboard() {
 
       <EventDrawer event={drawerEvent} onClose={() => setDrawerEvent(null)} />
     </motion.div>
+  )
+}
+
+function FooterStat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-[0.09em] text-ink-4">{label}</div>
+      <div className={cn('stat mt-0.5 text-[17px] leading-none', accent ? 'text-orange' : 'text-ink')}>{value}</div>
+    </div>
   )
 }
 

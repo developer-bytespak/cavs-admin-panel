@@ -122,19 +122,6 @@ export interface Registration {
   source: string
 }
 
-export interface Payment {
-  id: string
-  playerId: string | null
-  family: string
-  playerName: string
-  program: string
-  amount: number
-  status: PayStatus
-  due: string
-  lastActivity: string
-  method: string
-  history: { id: string; date: string; label: string; amount: number | null }[]
-}
 
 export interface Announcement {
   id: string
@@ -179,4 +166,88 @@ export interface ActivityItem {
   target: string
   time: string
   kind: 'registration' | 'schedule' | 'game' | 'payment' | 'roster'
+}
+
+/* ------------------------------------------------------------------ */
+/* Billing — invoices, plans, installments, credits                    */
+/* ------------------------------------------------------------------ */
+export type InvoiceStatus = 'paid' | 'partial' | 'upcoming' | 'overdue' | 'failed' | 'refunded' | 'credit'
+export type InstallmentStatus = 'paid' | 'upcoming' | 'due' | 'overdue' | 'failed' | 'refunded'
+export type PayMethodKind = 'card' | 'ach' | 'cash' | 'check' | 'offline' | 'credit'
+export type PlanKind = 'full' | 'installments' | 'monthly' | 'custom'
+
+export interface StoredMethod {
+  brand: 'Visa' | 'Mastercard' | 'Amex' | 'Bank'
+  last4: string
+  expiry: string
+}
+
+export interface Installment {
+  id: string
+  number: number
+  amount: number
+  dueDate: string
+  status: InstallmentStatus
+  paidDate: string | null
+  method: string | null
+  failureReason: string | null
+}
+
+export interface LedgerEntry {
+  id: string
+  date: string
+  label: string
+  amount: number | null
+  kind: 'payment' | 'refund' | 'credit' | 'discount' | 'fee' | 'invoice' | 'reminder' | 'adjustment' | 'failure'
+  method?: string
+  reference?: string
+}
+
+export interface PaymentPlan {
+  id: string
+  name: string
+  kind: PlanKind
+  installmentCount: number
+  requiresInitial: boolean
+  requiresAutopay: boolean
+  processingFeePct: number
+  isPrivate: boolean
+  notes: string
+}
+
+export interface Invoice {
+  id: string              // INV-1048
+  playerId: string | null
+  playerName: string
+  familyName: string
+  teamId: string | null
+  program: string
+  description: string
+  issued: string
+  subtotal: number
+  discountLabel: string | null
+  discountAmount: number
+  creditApplied: number
+  processingFee: number
+  total: number
+  paid: number
+  balance: number
+  status: InvoiceStatus
+  planId: string
+  planName: string
+  installments: Installment[]
+  ledger: LedgerEntry[]
+  method: StoredMethod | null
+  autopay: boolean
+  nextDue: string | null
+  lastReminder: string | null
+  registrationId: string | null
+  notes: string
+  allowPartial: boolean
+}
+
+export interface FamilyAccount {
+  familyName: string
+  credit: number
+  playerIds: string[]
 }

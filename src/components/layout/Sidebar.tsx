@@ -1,9 +1,9 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LifeBuoy, ChevronLeft, X } from 'lucide-react'
+import { LifeBuoy, ChevronLeft, X, Lock } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../store/AppStore'
-import { PRIMARY_NAV, TEAM_TOOLS_NAV, MANAGE_NAV, forRole, type NavItem } from './nav'
+import { PRIMARY_NAV, TEAM_TOOLS_NAV, MANAGE_NAV, FUTURE_NAV, forRole, type NavItem } from './nav'
 import { LiveDot } from '../ui/Badge'
 import { Avatar } from '../ui/Avatar'
 
@@ -27,7 +27,7 @@ function NavRow({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boo
       {active && (
         <motion.span
           layoutId="nav-pill"
-          className="absolute inset-0 rounded-[10px] bg-white/[0.09] ring-1 ring-inset ring-white/[0.07]"
+          className="absolute inset-0 rounded-[10px] bg-gradient-to-r from-royal/28 to-white/[0.06] ring-1 ring-inset ring-white/[0.09] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
           transition={{ type: 'spring', stiffness: 460, damping: 38 }}
         />
       )}
@@ -58,12 +58,13 @@ function NavRow({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boo
   )
 }
 
-function Group({ label, items, collapsed, onNavigate }: { label?: string; items: NavItem[]; collapsed: boolean; onNavigate?: () => void }) {
+function Group({ label, items, collapsed, onNavigate, first }: { label?: string; items: NavItem[]; collapsed: boolean; onNavigate?: () => void; first?: boolean }) {
   if (!items.length) return null
   return (
     <div>
       {label && !collapsed && (
-        <div className="px-2.5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.13em] text-white/28">{label}</div>
+        <div className={cn('px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.13em] text-white/28',
+          first ? 'pt-1' : 'pt-4')}>{label}</div>
       )}
       {label && collapsed && <div className="mx-2.5 my-3 h-px bg-white/8" />}
       <div className="space-y-0.5">
@@ -122,9 +123,34 @@ export function Sidebar({
 
         {/* Nav */}
         <nav className={cn('relative flex-1 overflow-y-auto py-3', collapsed ? 'px-2' : 'px-3')}>
-          <Group items={forRole(PRIMARY_NAV, role)} collapsed={collapsed} onNavigate={onCloseMobile} />
+          <Group first label="Core" items={forRole(PRIMARY_NAV, role)} collapsed={collapsed} onNavigate={onCloseMobile} />
           <Group label="Team Tools" items={forRole(TEAM_TOOLS_NAV, role)} collapsed={collapsed} onNavigate={onCloseMobile} />
           <Group label="Management" items={forRole(MANAGE_NAV, role)} collapsed={collapsed} onNavigate={onCloseMobile} />
+
+          {/* Future scope — visible, deliberately inert */}
+          {!collapsed && (
+            <div>
+              <div className="px-2.5 pb-1.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.13em] text-white/28">
+                Coming Soon
+              </div>
+              <div className="space-y-0.5">
+                {FUTURE_NAV.map((f) => (
+                  <div
+                    key={f.label}
+                    title={f.hint}
+                    aria-disabled="true"
+                    className="flex cursor-not-allowed items-center gap-3 rounded-[10px] border border-dashed border-white/[0.08] px-2.5 py-2 opacity-45"
+                  >
+                    <Lock className="h-[15px] w-[15px] shrink-0 text-white/35" />
+                    <span className="truncate text-[12.5px] font-medium text-white/55">{f.label}</span>
+                    <span className="ml-auto shrink-0 rounded-full bg-white/[0.07] px-1.5 py-px text-[8.5px] font-semibold uppercase tracking-[0.07em] text-white/45">
+                      Soon
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* Sync status — the real-time design language, quietly */}

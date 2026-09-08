@@ -21,6 +21,10 @@ Entry screen: `/signin` (any credentials continue). The app itself opens at `/`.
 **Administrator** — Dashboard, Schedule, Live Games, Teams, Players, Registrations,
 Payments, Communications, Reports, Staff & Roles, Locations, Settings.
 
+**Payments** is the deepest module: invoices, payment plans, installment schedules,
+AutoPay and stored-method state, partial payments, failed payments, credits,
+discounts, refunds, voids, reminders, and a dedicated collection centre. See below.
+
 **Coach** — the same product, scoped: Dashboard, My Teams, Players, Schedule,
 Live Games, Communications, plus the team tools (attendance, development,
 volunteers, channels).
@@ -37,7 +41,7 @@ future scope in the role switcher and in Settings → Roles & Access.
 ```
 src/
   data/          types, mock academy (deterministic — same demo data every load),
-                 derived analytics series
+                 billing ledger (invoices, plans, installments), derived analytics
   store/         AppStore — role, all mutable state, permissions, toasts, overlays
   lib/           utils, chart palette
   components/
@@ -48,6 +52,9 @@ src/
                  Heatmap, BarCompare, Sparkline, ChartCard, chart-kit
     domain/      MetricCard, LiveGameHero, TodayTimeline, TeamCard, EventDrawer,
                  CalendarGrid, ActivityFeed
+    billing/     PaymentHealth arc, InstallmentTimeline, InvoiceStatusBadge,
+                 BillingModals (record payment, pay now, create invoice, reminders,
+                 refund, convert-to-plan, apply credit, create plan)
     overlays/    CommandPalette (⌘K), QuickCreate, RoleSwitcher, NotificationPanel,
                  CreateModals
   pages/         one file per module
@@ -58,6 +65,45 @@ src/
 Swapping local state for API calls is confined to that file; no page or component
 reaches for data directly except through `useApp()` and the read-only lookups in
 `data/mock.ts`.
+
+## Payments
+
+The invoice ledger in `data/billing.ts` is the **single source of truth for money**.
+Player payment badges, the dashboard widget, registration detail, player profiles and
+the payment report all resolve to it — there is no second, contradictory payment model.
+
+Headline figures are balanced to exact targets at generation time and asserted in the
+smoke suite:
+
+| Figure | Value |
+|---|---|
+| Collected | $42,860 |
+| Outstanding (billed, unpaid) | $6,240 |
+| — overdue | $2,180 |
+| — failed | $1,860 |
+| — due soon | $2,200 |
+| Upcoming (future installments) | $8,450 |
+| Collection rate | 91.4% |
+| Families needing attention | 12 |
+
+**Collection rate** is `collected / (collected + overdue + failed)` — the share of
+everything *already due* that has been collected. Installments not yet due are not
+counted against it.
+
+**Families needing attention** counts distinct households, not invoices: two invoices
+for one family is one phone call.
+
+The demo invoice is **INV-1048** — Jordan Miles, 14U Elite, $1,200 total on a
+3-installment plan, $800 paid, $400 due. Those numbers are identical on the player
+profile, the registration, the dashboard and the report.
+
+Every mutation (`recordPayment`, `refundPayment`, `convertToPlan`, `applyCredit`,
+`retryPayment`, `sendReminder`, …) lives in `AppStore` and updates the ledger through
+one `reconcile()` function that recomputes totals, balance, next due date and status.
+Swapping local state for API calls stays confined to that file.
+
+No payment provider is connected. Card details are masked display strings only — no
+real or realistic card numbers are stored or generated.
 
 ## Design system
 

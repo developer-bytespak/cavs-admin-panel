@@ -1,4 +1,5 @@
-import { teams, games, practices, payments, registrations, players, d, dayOffset, iso } from './mock'
+import { teams, games, practices, registrations, players, d, dayOffset, iso } from './mock'
+import { invoices, billingMetrics, collectionsByMonth } from './billing'
 
 /* Deterministic wobble so the demo series look organic but never change */
 function wave(i: number, seed: number, amp: number) {
@@ -98,21 +99,17 @@ export const registrationsByProgram = [
 ]
 
 /* --- Payments ------------------------------------------------------- */
-export const collected = payments.filter((p) => p.status === 'paid').reduce((s, p) => s + p.amount, 0)
-export const pendingTotal = payments.filter((p) => p.status === 'pending').reduce((s, p) => s + p.amount, 0)
-export const overdueTotal = payments.filter((p) => p.status === 'overdue').reduce((s, p) => s + p.amount, 0)
-export const outstanding = pendingTotal + overdueTotal
-export const familiesNeedingAttention = payments.filter((p) => p.status !== 'paid').length
+/* Every money figure in the product resolves to the same invoice ledger. */
+const money$ = billingMetrics(invoices)
+export const collected = money$.collected
+export const pendingTotal = money$.dueSoon + money$.upcoming
+export const overdueTotal = money$.overdue + money$.failed
+export const outstanding = money$.outstanding
+export const upcomingTotal = money$.upcoming
+export const collectionRate = money$.collectionRate
+export const familiesNeedingAttention = money$.needsAttention
 
-export const paymentTrend = Array.from({ length: 6 }, (_, i) => {
-  const date = new Date()
-  date.setMonth(date.getMonth() - (5 - i))
-  return {
-    label: MONTHS[date.getMonth()],
-    collected: Math.round(11800 + i * 1180 + wave(i, 4, 900)),
-    outstanding: Math.round(3200 - i * 130 + wave(i, 9, 420)),
-  }
-})
+export const paymentTrend = collectionsByMonth(invoices, 6)
 
 /* --- Participation --------------------------------------------------- */
 export const participationByTeam = teams.map((t) => ({

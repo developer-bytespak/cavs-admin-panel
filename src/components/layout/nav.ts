@@ -40,3 +40,9 @@ export const MANAGE_NAV: NavItem[] = [
 ]
 
 export const forRole = (items: NavItem[], role: Role) => items.filter((i) => i.roles.includes(role))
+
+/** Future scope, shown disabled so the client sees where the platform is going. */
+export const FUTURE_NAV = [
+  { label: 'Player Portal', hint: 'Schedules, team information, stats, goals and coach updates.' },
+  { label: 'Parent Portal', hint: 'Live game tracking, locations, payments, registrations and communication.' },
+]

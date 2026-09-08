@@ -7,7 +7,10 @@ import {
 import { useApp } from '../store/AppStore'
 import { teams, teamById, rosterOf, d } from '../data/mock'
 import type { RegStage } from '../data/types'
-import { cn, fmtDate, relativeDay } from '../lib/utils'
+import { cn, fmtDate, money, relativeDay } from '../lib/utils'
+import { InvoiceStatusBadge } from '../components/billing/InvoiceStatusBadge'
+import { BalanceBar, InstallmentTimeline } from '../components/billing/InstallmentTimeline'
+import { ReminderModal, RecordPaymentModal } from '../components/billing/BillingModals'
 import { stagger } from '../components/layout/AppShell'
 import { PageHeader, MetaItem } from '../components/layout/PageHeader'
 import { Card, CardHeader } from '../components/ui/Card'
@@ -28,10 +31,11 @@ const FLOW: { key: RegStage; label: string }[] = [
 
 export default function RegistrationDetail() {
   const { regId } = useParams()
-  const { registrations, moveRegistration, updateRegistration, toast } = useApp()
+  const { registrations, invoices, moveRegistration, updateRegistration, toast } = useApp()
   const [assignOpen, setAssignOpen] = useState(false)
   const [noteOpen, setNoteOpen] = useState(false)
   const [note, setNote] = useState('')
+  const [payModal, setPayModal] = useState<null | 'record' | 'remind'>(null)
 
   const reg = registrations.find((r) => r.id === regId)
   if (!reg) {
@@ -40,6 +44,8 @@ export default function RegistrationDetail() {
       action={<Link to="/registrations"><Button variant="secondary">Back to registrations</Button></Link>} /></Card>
   }
 
+  const invoice = invoices.find((i) => i.registrationId === reg.id)
+    ?? invoices.find((i) => i.playerName === reg.playerName)
   const stageIndex = FLOW.findIndex((f) => f.key === reg.stage)
   const assigned = reg.assignedTeamId ? teamById(reg.assignedTeamId) : null
   const [first, last] = reg.playerName.split(' ')
@@ -212,15 +218,58 @@ export default function RegistrationDetail() {
           </Card>
 
           <Card>
-            <CardHeader eyebrow="Registration" title="Payment status" action={<StatusBadge status={reg.payment} />} />
-            <p className="mt-3 text-[13px] leading-relaxed text-ink-3">
-              {reg.payment === 'paid'
-                ? 'Season dues are settled. This family is clear for placement.'
-                : 'Dues are outstanding. Placement can proceed, but the balance should be collected before the first game.'}
-            </p>
-            <Link to="/payments" className="mt-3 block">
-              <Button size="sm" variant="secondary" className="w-full" iconRight={ArrowRight}>Open payments</Button>
-            </Link>
+            <CardHeader
+              eyebrow="Payment"
+              title={invoice ? invoice.id : 'No invoice yet'}
+              action={invoice ? <InvoiceStatusBadge status={invoice.status} /> : <StatusBadge status={reg.payment} />}
+              subtitle={invoice ? `${invoice.program} · ${invoice.planName}` : undefined}
+            />
+            {invoice ? (
+              <>
+                <div className="mt-3.5 flex items-baseline justify-between gap-3">
+                  <span className="stat text-[26px] leading-none text-ink">
+                    {money(invoice.paid)}<span className="text-[16px] text-ink-4"> / {money(invoice.total)}</span>
+                  </span>
+                  <span className={cn('stat text-[19px] leading-none', invoice.balance > 0 ? 'text-orange' : 'text-good')}>
+                    {invoice.balance > 0 ? `${money(invoice.balance)} due` : 'Settled'}
+                  </span>
+                </div>
+                <BalanceBar paid={invoice.paid} total={invoice.total} className="mt-3" />
+                {invoice.installments.length > 1 && (
+                  <div className="mt-4 border-t border-line-soft pt-3">
+                    <div className="eyebrow mb-2">{invoice.planName}</div>
+                    <InstallmentTimeline installments={invoice.installments} orientation="vertical" />
+                  </div>
+                )}
+                {invoice.nextDue && (
+                  <p className="mt-3 border-t border-line-soft pt-3 text-[12.5px] text-ink-3">
+                    Next due <strong className="font-semibold text-ink">{fmtDate(invoice.nextDue, 'medium')}</strong>
+                  </p>
+                )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link to={`/payments/${invoice.id}`} className="flex-1">
+                    <Button size="sm" variant="secondary" className="w-full" iconRight={ArrowRight}>View invoice</Button>
+                  </Link>
+                  {invoice.balance > 0 && (
+                    <>
+                      <Button size="sm" variant="secondary" onClick={() => setPayModal('record')}>Record payment</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setPayModal('remind')}>Send reminder</Button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 text-[13px] leading-relaxed text-ink-3">
+                  {reg.payment === 'paid'
+                    ? 'Season dues are settled. This family is clear for placement.'
+                    : 'No invoice has been raised yet. Create one when this registration is approved.'}
+                </p>
+                <Link to="/payments" className="mt-3 block">
+                  <Button size="sm" variant="secondary" className="w-full" iconRight={ArrowRight}>Open payments</Button>
+                </Link>
+              </>
+            )}
           </Card>
 
           <Card>
@@ -267,6 +316,9 @@ export default function RegistrationDetail() {
           </Select>
         </Field>
       </Modal>
+
+      {invoice && <RecordPaymentModal open={payModal === 'record'} onClose={() => setPayModal(null)} invoice={invoice} />}
+      {invoice && <ReminderModal open={payModal === 'remind'} onClose={() => setPayModal(null)} invoices={[invoice]} />}
 
       {/* Add note */}
       <Modal

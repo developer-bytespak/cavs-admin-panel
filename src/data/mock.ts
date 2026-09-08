@@ -1,6 +1,6 @@
 import type {
   Team, Player, Staff, GameEvent, PracticeEvent, OtherEvent, CalEvent,
-  Registration, Payment, Announcement, Location, Notification, ActivityItem,
+  Registration, Announcement, Location, Notification, ActivityItem,
 } from './types'
 import { FIRST_M, FIRST_F, LAST, POSITIONS } from './names'
 
@@ -366,11 +366,12 @@ export const allEvents: CalEvent[] = [...games, ...practices, ...otherEvents]
 /* ------------------------------------------------------------------ */
 /* Registrations                                                       */
 /* ------------------------------------------------------------------ */
+/** Season fee schedule. Billing derives every invoice amount from this. */
 export const PROGRAMS = [
-  { id: 'elite', label: 'Elite Travel', fee: 395 },
-  { id: 'select', label: 'Select Travel', fee: 325 },
-  { id: 'dev', label: 'Development', fee: 245 },
-  { id: 'skills', label: 'Academy Skills', fee: 180 },
+  { id: 'elite', label: 'Elite Travel', fee: 1200 },
+  { id: 'select', label: 'Select Travel', fee: 850 },
+  { id: 'dev', label: 'Development', fee: 600 },
+  { id: 'skills', label: 'Academy Skills', fee: 350 },
 ]
 const SOURCES = ['Website form', 'Open gym', 'Referral — current family', 'School outreach', 'Summer camp']
 const EVALUATORS = ['Marcus Reed', 'Tanya Whitfield', 'Andre Coleman', 'Luis Salazar']
@@ -439,63 +440,7 @@ registrations[0].source = 'Referral — current family'
 
 export const regById = (id: string) => registrations.find((r) => r.id === id)
 
-/* ------------------------------------------------------------------ */
-/* Payments — balanced so headline totals are internally consistent    */
-/* ------------------------------------------------------------------ */
-const PAY_STATUS_PLAN: [Payment['status'], number][] = [['paid', 75], ['pending', 13], ['overdue', 8]]
-const PAID_TARGET = 18420
-const OUTSTANDING_TARGET = 2460
-const METHODS = ['Visa •••• 4417', 'Mastercard •••• 8802', 'ACH — Wells Fargo', 'Visa •••• 9130', 'Amex •••• 3006']
 
-export const payments: Payment[] = []
-let payid = 0
-const rosteredForPay = players.filter((p) => p.status === 'active')
-for (const [status, count] of PAY_STATUS_PLAN) {
-  for (let i = 0; i < count; i++) {
-    payid += 1
-    const p = rosteredForPay[(payid * 7) % rosteredForPay.length]
-    const prog = p.teamId ? (teamById(p.teamId)!.division === 'Elite' ? PROGRAMS[0] : teamById(p.teamId)!.division === 'Select' ? PROGRAMS[1] : PROGRAMS[2]) : PROGRAMS[3]
-    payments.push({
-      id: `pay-${String(payid).padStart(3, '0')}`,
-      playerId: p.id,
-      family: `${p.guardian.name.split(' ')[1] ?? p.last} Family`,
-      playerName: `${p.first} ${p.last}`,
-      program: prog.label,
-      amount: prog.fee,
-      status,
-      due: status === 'overdue' ? d(-between(4, 22)) : status === 'pending' ? d(between(2, 14)) : d(-between(6, 40)),
-      lastActivity: d(-between(0, 12)),
-      method: status === 'paid' ? pick(METHODS) : '—',
-      history: [],
-    })
-  }
-}
-/* Balance the ledger so Collected / Outstanding match the reported totals */
-function balance(list: Payment[], target: number) {
-  const sum = list.reduce((s, p) => s + p.amount, 0)
-  let delta = target - sum
-  for (let i = list.length - 1; i >= 0 && delta !== 0; i--) {
-    const step = Math.max(-list[i].amount + 45, Math.min(delta, 260))
-    list[i].amount += step
-    delta -= step
-  }
-}
-balance(payments.filter((p) => p.status === 'paid'), PAID_TARGET)
-balance(payments.filter((p) => p.status !== 'paid'), OUTSTANDING_TARGET)
-for (const p of payments) {
-  p.amount = Math.round(p.amount)
-  p.history = p.status === 'paid'
-    ? [
-        { id: 'h1', date: p.lastActivity, label: `Payment received — ${p.method}`, amount: p.amount },
-        { id: 'h2', date: p.due, label: 'Invoice issued', amount: p.amount },
-        { id: 'h3', date: d(-between(41, 60)), label: 'Registration completed', amount: null },
-      ]
-    : [
-        { id: 'h1', date: p.lastActivity, label: p.status === 'overdue' ? 'Reminder sent — 2nd notice' : 'Reminder sent', amount: null },
-        { id: 'h2', date: p.due, label: 'Invoice issued', amount: p.amount },
-      ]
-}
-export const paymentById = (id: string) => payments.find((p) => p.id === id)
 
 /* ------------------------------------------------------------------ */
 /* Communications                                                      */

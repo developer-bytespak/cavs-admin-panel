@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { teams, teamById, staffById, locationById, rosterOf, d, announcements } from '../data/mock'
+import { playerPaymentStatus } from '../data/billing'
 import type { CalEvent, Player } from '../data/types'
 import { cn, fmtDate, fmtTime, relativeDay } from '../lib/utils'
 import { SERIES } from '../lib/palette'
@@ -40,7 +41,7 @@ const TABS = [
 export default function TeamDetail() {
   const { teamId } = useParams()
   const navigate = useNavigate()
-  const { games, practices, players, role, visibleTeamIds, can, assignPlayerTeam, toast } = useApp()
+  const { games, practices, players, invoices, role, visibleTeamIds, can, assignPlayerTeam, toast } = useApp()
   const [tab, setTab] = useState('overview')
   const [drawerEvent, setDrawerEvent] = useState<CalEvent | null>(null)
   const [creating, setCreating] = useState<null | 'game' | 'practice'>(null)
@@ -90,7 +91,7 @@ export default function TeamDetail() {
     ) },
     { key: 'age', header: 'Age', align: 'center', sortValue: (p) => p.age, render: (p) => <span className="tabular-nums text-ink-2">{p.age}</span> },
     { key: 'reg', header: 'Registration', hideBelow: 'md', render: (p) => <StatusBadge status={p.registration} size="xs" /> },
-    { key: 'pay', header: 'Payment', hideBelow: 'md', render: (p) => <StatusBadge status={p.payment} size="xs" /> },
+    { key: 'pay', header: 'Payment', hideBelow: 'md', render: (p) => <StatusBadge status={playerPaymentStatus(p.id, invoices)} size="xs" /> },
     { key: 'att', header: 'Attendance', align: 'right', sortValue: (p) => p.attendance, render: (p) => (
       <div className="flex items-center justify-end gap-2">
         <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-line-soft sm:block">
@@ -241,7 +242,7 @@ export default function TeamDetail() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-[13px] text-ink-3">
               {roster.length} of {team.capacity} spots filled ·{' '}
-              {roster.filter((p) => p.payment !== 'paid').length} players with open balances
+              {roster.filter((p) => playerPaymentStatus(p.id, invoices) !== 'paid').length} players with open balances
             </p>
             {can('manage.assignedTeams') && (
               <div className="flex gap-2">

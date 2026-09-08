@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Users, UserPlus, Eye, MessageSquare, ArrowRightLeft, MoreHorizontal, Download } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { teams, teamById, rosterOf } from '../data/mock'
+import { playerPaymentStatus } from '../data/billing'
 import type { Player } from '../data/types'
 import { cn } from '../lib/utils'
 import { stagger } from '../components/layout/AppShell'
@@ -20,7 +21,7 @@ import { Field, Select } from '../components/ui/Field'
 import { PlayerForm } from '../components/overlays/CreateModals'
 
 export default function Players() {
-  const { players, role, visibleTeamIds, assignPlayerTeam, toast, can } = useApp()
+  const { players, invoices, role, visibleTeamIds, assignPlayerTeam, toast, can } = useApp()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
@@ -48,9 +49,9 @@ export default function Players() {
     if (age !== 'all' && String(p.age) !== age) return false
     if (status !== 'all' && p.status !== status) return false
     if (registration !== 'all' && p.registration !== registration) return false
-    if (payment !== 'all' && p.payment !== payment) return false
+    if (payment !== 'all' && playerPaymentStatus(p.id, invoices) !== payment) return false
     return true
-  }), [scoped, search, team, age, status, registration, payment])
+  }), [scoped, search, team, age, status, registration, payment, invoices])
 
   const activeFilters = [team, age, status, registration, payment].filter((v) => v !== 'all').length + (search ? 1 : 0)
   const clear = () => { setTeam('all'); setAge('all'); setStatus('all'); setRegistration('all'); setPayment('all'); setSearch('') }
@@ -76,7 +77,11 @@ export default function Players() {
     } },
     { key: 'age', header: 'Age', align: 'center', hideBelow: 'sm', sortValue: (p) => p.age, render: (p) => <span className="tabular-nums text-ink-2">{p.age}</span> },
     { key: 'reg', header: 'Registration', hideBelow: 'md', render: (p) => <StatusBadge status={p.registration} size="xs" /> },
-    ...(!isCoach ? [{ key: 'pay', header: 'Payment', hideBelow: 'md' as const, render: (p: Player) => <StatusBadge status={p.payment} size="xs" /> }] : []),
+    ...(!isCoach ? [{
+      key: 'pay', header: 'Payment', hideBelow: 'md' as const,
+      sortValue: (p: Player) => playerPaymentStatus(p.id, invoices),
+      render: (p: Player) => <StatusBadge status={playerPaymentStatus(p.id, invoices)} size="xs" />,
+    }] : []),
     { key: 'att', header: 'Attendance', align: 'right', sortValue: (p) => p.attendance, render: (p) => (
       <div className="flex items-center justify-end gap-2">
         <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-line-soft sm:block">

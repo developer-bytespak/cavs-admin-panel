@@ -1,11 +1,15 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type {
-  Role, GameEvent, PracticeEvent, Registration, Payment, Player,
+  Role, GameEvent, PracticeEvent, Registration, Player,
   Announcement, Notification, RegStage, GameStatus, AttendanceMark, Priority,
+  Invoice, Installment, LedgerEntry, StoredMethod, FamilyAccount,
 } from '../data/types'
 import {
+  invoices as seedInvoices, familyAccounts as seedFamilies, reconcile, planById, methodLabel,
+} from '../data/billing'
+import {
   games as seedGames, practices as seedPractices, registrations as seedRegs,
-  payments as seedPayments, players as seedPlayers, announcements as seedAnnouncements,
+  players as seedPlayers, announcements as seedAnnouncements,
   notifications as seedNotifications, staff, teams, CURRENT_ADMIN, CURRENT_COACH,
   LIVE_GAME_ID, otherEvents,
 } from '../data/mock'
@@ -30,8 +34,9 @@ interface AppState {
   games: GameEvent[]
   practices: PracticeEvent[]
   registrations: Registration[]
-  payments: Payment[]
   players: Player[]
+  invoices: Invoice[]
+  families: FamilyAccount[]
   announcements: Announcement[]
   notifications: Notification[]
   attendance: Record<string, Record<string, AttendanceMark>>
@@ -48,7 +53,20 @@ interface AppState {
   moveRegistration: (id: string, stage: RegStage) => void
   updateRegistration: (id: string, patch: Partial<Registration>) => void
   assignPlayerTeam: (playerId: string, teamId: string | null) => void
-  setPaymentStatus: (id: string, status: Payment['status']) => void
+  /* Billing */
+  recordPayment: (args: { invoiceId: string; amount: number; method: string; date: string; reference?: string; note?: string }) => void
+  createInvoice: (inv: Partial<Invoice>) => Invoice
+  sendReminder: (invoiceIds: string[], template: string) => void
+  retryPayment: (invoiceId: string) => void
+  refundPayment: (invoiceId: string, amount: number, reason: string) => void
+  voidInvoice: (invoiceId: string) => void
+  applyCredit: (invoiceId: string, amount: number) => void
+  addCredit: (familyName: string, amount: number) => void
+  setAutopay: (invoiceId: string, on: boolean) => void
+  requestPaymentMethod: (invoiceId: string) => void
+  updateMethod: (invoiceId: string, method: StoredMethod) => void
+  convertToPlan: (invoiceId: string, planId: string, firstDue: string) => void
+  adjustBalance: (invoiceId: string, delta: number, note: string) => void
   sendAnnouncement: (a: { title: string; body: string; audienceKey: string; audience: string; recipients: number; priority: Priority }) => void
   archiveAnnouncement: (id: string) => void
   markAttendance: (eventId: string, playerId: string, mark: AttendanceMark) => void
@@ -106,7 +124,8 @@ export function AppProvider({ children, initialRole = 'admin' }: { children: Rea
   const [games, setGames] = useState<GameEvent[]>(() => seedGames.map((g) => ({ ...g })))
   const [practices, setPractices] = useState<PracticeEvent[]>(() => seedPractices.map((p) => ({ ...p })))
   const [registrations, setRegs] = useState<Registration[]>(() => seedRegs.map((r) => ({ ...r })))
-  const [payments, setPayments] = useState<Payment[]>(() => seedPayments.map((p) => ({ ...p })))
+  const [invoices, setInvoices] = useState<Invoice[]>(() => seedInvoices.map((i) => ({ ...i })))
+  const [families, setFamilies] = useState<FamilyAccount[]>(() => seedFamilies.map((f) => ({ ...f })))
   const [players, setPlayers] = useState<Player[]>(() => seedPlayers.map((p) => ({ ...p })))
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => seedAnnouncements.map((a) => ({ ...a })))
   const [notifications, setNotifications] = useState<Notification[]>(() => seedNotifications.map((n) => ({ ...n })))
@@ -242,11 +261,164 @@ export function AppProvider({ children, initialRole = 'admin' }: { children: Rea
     pulseSync()
   }, [pulseSync])
 
-  /* ---------------- Payments ---------------- */
-  const setPaymentStatus = useCallback((id: string, status: Payment['status']) => {
-    setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status, lastActivity: new Date().toISOString().slice(0, 10) } : p)))
+  /* ---------------- Billing ---------------- */
+  const patchInvoice = useCallback((id: string, fn: (inv: Invoice) => Invoice) => {
+    setInvoices((prev) => prev.map((inv) => (inv.id === id ? reconcile(fn(inv)) : inv)))
     pulseSync()
   }, [pulseSync])
+
+  const logEntry = (inv: Invoice, entry: Omit<LedgerEntry, 'id'>): Invoice =>
+    ({ ...inv, ledger: [{ ...entry, id: uid('l') }, ...inv.ledger] })
+
+  /** Settles installments oldest-first with whatever the family just paid. */
+  const recordPayment = useCallback(({ invoiceId, amount, method, date, reference, note }: {
+    invoiceId: string; amount: number; method: string; date: string; reference?: string; note?: string
+  }) => {
+    patchInvoice(invoiceId, (inv) => {
+      let remaining = amount
+      const installments: Installment[] = inv.installments.map((i) => {
+        if (i.status === 'paid' || i.status === 'refunded' || remaining <= 0) return i
+        if (remaining >= i.amount) {
+          remaining -= i.amount
+          return { ...i, status: 'paid' as const, paidDate: date, method, failureReason: null }
+        }
+        /* A short payment splits the installment so the balance stays exact. */
+        const paidPart = remaining
+        remaining = 0
+        return { ...i, amount: i.amount - paidPart, status: i.status === 'failed' ? 'due' as const : i.status, failureReason: null }
+      })
+      const partial = amount > 0 && installments.some((i, idx) => i.amount !== inv.installments[idx]?.amount)
+      return logEntry({ ...inv, installments, lastReminder: inv.lastReminder }, {
+        date, kind: 'payment', amount, method, reference,
+        label: partial ? 'Partial payment received' : 'Payment received',
+      })
+    })
+    if (note) {
+      setInvoices((prev) => prev.map((inv) => (inv.id === invoiceId
+        ? { ...inv, notes: inv.notes ? `${inv.notes}\n${note}` : note } : inv)))
+    }
+  }, [patchInvoice])
+
+  const createInvoice = useCallback((partial: Partial<Invoice>) => {
+    const inv = reconcile({
+      id: `INV-${1200 + Math.floor(Math.random() * 700)}`,
+      playerId: null, playerName: '', familyName: '', teamId: null, program: '', description: '',
+      issued: new Date().toISOString().slice(0, 10),
+      subtotal: 0, discountLabel: null, discountAmount: 0, creditApplied: 0, processingFee: 0,
+      total: 0, paid: 0, balance: 0, status: 'upcoming',
+      planId: 'plan-full', planName: 'Pay in Full', installments: [], ledger: [],
+      method: null, autopay: false, nextDue: null, lastReminder: null, registrationId: null,
+      notes: '', allowPartial: true,
+      ...partial,
+    } as Invoice)
+    const withLog = logEntry(inv, { date: inv.issued, kind: 'invoice', label: `Invoice issued — ${inv.planName}`, amount: inv.subtotal })
+    setInvoices((prev) => [withLog, ...prev])
+    pulseSync()
+    return withLog
+  }, [pulseSync])
+
+  const sendReminder = useCallback((invoiceIds: string[], template: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    setInvoices((prev) => prev.map((inv) => (invoiceIds.includes(inv.id)
+      ? { ...inv, lastReminder: today, ledger: [{ id: uid('l'), date: today, kind: 'reminder' as const, label: `Reminder sent — ${template}`, amount: null }, ...inv.ledger] }
+      : inv)))
+    pulseSync()
+  }, [pulseSync])
+
+  const retryPayment = useCallback((invoiceId: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    patchInvoice(invoiceId, (inv) => {
+      const idx = inv.installments.findIndex((i) => i.status === 'failed')
+      if (idx < 0) return inv
+      const installments = inv.installments.map((i, k) => (k === idx
+        ? { ...i, status: 'paid' as const, paidDate: today, method: methodLabel(inv.method), failureReason: null } : i))
+      return logEntry({ ...inv, installments }, {
+        date: today, kind: 'payment', amount: inv.installments[idx].amount,
+        method: methodLabel(inv.method), label: `Retry succeeded — installment ${inv.installments[idx].number}`,
+      })
+    })
+  }, [patchInvoice])
+
+  const refundPayment = useCallback((invoiceId: string, amount: number, reason: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    patchInvoice(invoiceId, (inv) => logEntry(inv, {
+      date: today, kind: 'refund', amount, label: `Refund issued — ${reason}`,
+    }))
+  }, [patchInvoice])
+
+  const voidInvoice = useCallback((invoiceId: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    patchInvoice(invoiceId, (inv) => logEntry({
+      ...inv,
+      installments: inv.installments.map((i) => (i.status === 'paid' ? i : { ...i, amount: 0, status: 'refunded' as const })),
+    }, { date: today, kind: 'adjustment', amount: null, label: 'Invoice voided' }))
+  }, [patchInvoice])
+
+  const applyCredit = useCallback((invoiceId: string, amount: number) => {
+    const today = new Date().toISOString().slice(0, 10)
+    let family = ''
+    patchInvoice(invoiceId, (inv) => {
+      family = inv.familyName
+      return logEntry({ ...inv, creditApplied: inv.creditApplied + amount }, {
+        date: today, kind: 'credit', amount: -amount, label: 'Account credit applied',
+      })
+    })
+    setFamilies((prev) => prev.map((f) => (f.familyName === family ? { ...f, credit: Math.max(0, f.credit - amount) } : f)))
+  }, [patchInvoice])
+
+  const addCredit = useCallback((familyName: string, amount: number) => {
+    setFamilies((prev) => prev.map((f) => (f.familyName === familyName ? { ...f, credit: f.credit + amount } : f)))
+    pulseSync()
+  }, [pulseSync])
+
+  const setAutopay = useCallback((invoiceId: string, on: boolean) => {
+    patchInvoice(invoiceId, (inv) => ({ ...inv, autopay: on }))
+  }, [patchInvoice])
+
+  const requestPaymentMethod = useCallback((invoiceId: string) => {
+    const today = new Date().toISOString().slice(0, 10)
+    patchInvoice(invoiceId, (inv) => logEntry(inv, {
+      date: today, kind: 'reminder', amount: null, label: 'Payment method request sent to the family',
+    }))
+  }, [patchInvoice])
+
+  const updateMethod = useCallback((invoiceId: string, method: StoredMethod) => {
+    const today = new Date().toISOString().slice(0, 10)
+    patchInvoice(invoiceId, (inv) => logEntry({ ...inv, method }, {
+      date: today, kind: 'adjustment', amount: null, label: `Payment method updated — ${methodLabel(method)}`,
+    }))
+  }, [patchInvoice])
+
+  /** Re-plans the remaining balance across a new installment schedule. */
+  const convertToPlan = useCallback((invoiceId: string, planId: string, firstDue: string) => {
+    const plan = planById(planId)
+    patchInvoice(invoiceId, (inv) => {
+      const kept = inv.installments.filter((i) => i.status === 'paid')
+      const each = Math.round(inv.balance / plan.installmentCount)
+      const start = new Date(`${firstDue}T12:00`)
+      const fresh: Installment[] = Array.from({ length: plan.installmentCount }, (_, k) => {
+        const due = new Date(start); due.setMonth(due.getMonth() + k)
+        return {
+          id: uid('i'), number: kept.length + k + 1,
+          amount: k === plan.installmentCount - 1 ? inv.balance - each * (plan.installmentCount - 1) : each,
+          dueDate: due.toISOString().slice(0, 10),
+          status: (k === 0 ? 'due' : 'upcoming') as Installment['status'],
+          paidDate: null, method: null, failureReason: null,
+        }
+      })
+      return logEntry({ ...inv, planId, planName: plan.name, installments: [...kept, ...fresh] }, {
+        date: new Date().toISOString().slice(0, 10), kind: 'adjustment', amount: null,
+        label: `Converted to ${plan.name}`,
+      })
+    })
+  }, [patchInvoice])
+
+  const adjustBalance = useCallback((invoiceId: string, delta: number, note: string) => {
+    patchInvoice(invoiceId, (inv) => logEntry({ ...inv, subtotal: Math.max(0, inv.subtotal + delta) }, {
+      date: new Date().toISOString().slice(0, 10), kind: 'adjustment', amount: delta,
+      label: note || `Balance adjusted by ${delta > 0 ? '+' : ''}${delta}`,
+    }))
+  }, [patchInvoice])
 
   /* ---------------- Communications ---------------- */
   const sendAnnouncement = useCallback((a: { title: string; body: string; audienceKey: string; audience: string; recipients: number; priority: Priority }) => {
@@ -304,11 +476,14 @@ export function AppProvider({ children, initialRole = 'admin' }: { children: Rea
 
   const value: AppState = {
     role, setRole, user, visibleTeamIds, can,
-    games, practices, registrations, payments, players, announcements, notifications, attendance,
+    games, practices, registrations, players, announcements, notifications, attendance,
+    invoices, families,
+    recordPayment, createInvoice, sendReminder, retryPayment, refundPayment, voidInvoice,
+    applyCredit, addCredit, setAutopay, requestPaymentMethod, updateMethod, convertToPlan, adjustBalance,
     liveGameId: LIVE_GAME_ID,
     adjustScore, setGameStatus, setGameClock, createGame, updateGame,
     createPractice, updatePractice, moveRegistration, updateRegistration,
-    assignPlayerTeam, setPaymentStatus, sendAnnouncement, archiveAnnouncement, markAttendance,
+    assignPlayerTeam, sendAnnouncement, archiveAnnouncement, markAttendance,
     markAllRead, markRead, toasts, toast, dismissToast,
     paletteOpen, setPaletteOpen, createOpen, setCreateOpen, createKind, openCreate, closeCreate,
     lastSync, syncing,
