@@ -7,6 +7,7 @@ import { RoleSwitcher } from '../overlays/RoleSwitcher'
 import { QuickCreate } from '../overlays/QuickCreate'
 import { NotificationPanel } from '../overlays/NotificationPanel'
 import { Avatar } from '../ui/Avatar'
+import { CavsLogo } from '../ui/CavsLogo'
 import { LiveDot } from '../ui/Badge'
 
 export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
@@ -40,7 +41,9 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
             </>
           ) : (
             <div className="flex items-center gap-2.5">
-              <span className="font-display text-[16px] font-semibold uppercase tracking-[0.05em] text-ink">Cavs Academy</span>
+              {/* Carries the brand on mobile, where the sidebar is hidden. */}
+              <CavsLogo className="h-[26px] shrink-0" />
+              <span className="hidden font-display text-[15px] font-semibold uppercase tracking-[0.05em] text-ink sm:inline">Academy</span>
               {live > 0 && (
                 <span className="hidden items-center gap-1.5 rounded-full bg-orange-tint px-2 py-0.5 sm:inline-flex">
                   <LiveDot />

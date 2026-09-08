@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
-import { LifeBuoy, BookOpen, Mail, MessageSquare, Keyboard, Sparkles } from 'lucide-react'
+import { BookOpen, Mail, MessageSquare, Keyboard, Sparkles } from 'lucide-react'
 import { useApp } from '../store/AppStore'
 import { stagger } from '../components/layout/AppShell'
 import { PageHeader } from '../components/layout/PageHeader'
 import { Card, CardHeader } from '../components/ui/Card'
+import { CavsLogo } from '../components/ui/CavsLogo'
 import { Button } from '../components/ui/Button'
 
 const GUIDES = [
@@ -99,9 +100,7 @@ export default function Help() {
       <motion.div variants={stagger.item}>
         <Card className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-midnight text-white">
-              <LifeBuoy className="h-4 w-4" />
-            </span>
+            <CavsLogo className="h-[34px] shrink-0" />
             <div>
               <div className="text-[14px] font-semibold text-ink">Cavs Academy Command Center</div>
               <div className="text-[12.5px] text-ink-3">Frontend prototype · demonstration data · v1.0</div>

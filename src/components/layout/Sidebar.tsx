@@ -6,6 +6,7 @@ import { useApp } from '../../store/AppStore'
 import { PRIMARY_NAV, TEAM_TOOLS_NAV, MANAGE_NAV, FUTURE_NAV, forRole, type NavItem } from './nav'
 import { LiveDot } from '../ui/Badge'
 import { Avatar } from '../ui/Avatar'
+import { CavsLogo } from '../ui/CavsLogo'
 
 function NavRow({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
   const { games, registrations } = useApp()
@@ -100,17 +101,13 @@ export function Sidebar({
 
         {/* Brand */}
         <div className={cn('relative flex h-[60px] shrink-0 items-center gap-2.5 border-b border-white/[0.06]', collapsed ? 'justify-center px-2' : 'px-4')}>
-          <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-gradient-to-br from-royal to-[#0B1F45] ring-1 ring-inset ring-white/12">
-            <svg viewBox="0 0 24 24" className="h-4 w-4">
-              <circle cx="12" cy="12" r="9" fill="none" stroke="#F05A1A" strokeWidth="1.4" />
-              <path d="M12 3v18M3 12h18" stroke="#F05A1A" strokeWidth="1" />
-              <path d="M7 4.3c2 1.9 3.2 4.5 3.2 7.7S9 17.8 7 19.7M17 4.3c-2 1.9-3.2 4.5-3.2 7.7s1.2 5.8 3.2 7.7" fill="none" stroke="#fff" strokeOpacity="0.55" strokeWidth="1.1" />
-            </svg>
-          </span>
+          {/* The mark is a wordmark reading CAVS, so it carries the name itself
+              and the label beneath stays subordinate rather than repeating it. */}
+          <CavsLogo className={cn('shrink-0', collapsed ? 'h-[26px]' : 'h-[30px]')} />
           {!collapsed && (
-            <div className="min-w-0">
-              <div className="font-display text-[15px] font-semibold uppercase leading-none tracking-[0.06em] text-white">Cavs Academy</div>
-              <div className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.11em] text-white/35">Command Center</div>
+            <div className="min-w-0 border-l border-white/[0.10] pl-2.5">
+              <div className="font-display text-[12px] font-semibold uppercase leading-none tracking-[0.14em] text-white">Academy</div>
+              <div className="mt-1 text-[9.5px] font-medium uppercase tracking-[0.13em] text-white/40">Command Center</div>
             </div>
           )}
           <button

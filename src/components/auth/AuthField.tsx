@@ -1,6 +1,7 @@
 import React, { useId, useState } from 'react'
 import { Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { cn } from '../../lib/utils'
+export { CavsLogo } from '../ui/CavsLogo'
 
 /**
  * Auth-surface input. Taller and softer than the in-app `Input` on purpose —
@@ -64,26 +65,6 @@ export const AuthInput = React.forwardRef<
     </div>
   )
 })
-
-/**
- * The Cavs mark. Uses the padding-trimmed copy of the supplied logo: the original
- * carries ~40px of transparent space top and bottom, so a third of any box it sits
- * in renders empty and the mark reads far smaller than its height suggests.
- * Height is driven by the caller's className with `w-auto`, so the aspect ratio is
- * never fought over. Intrinsic dimensions are declared to avoid layout shift.
- */
-export function CavsLogo({ className }: { className?: string }) {
-  return (
-    <img
-      src="/cavs-logo-mark.avif"
-      alt="Cavs Youth Basketball"
-      width={192}
-      height={123}
-      className={cn('block w-auto select-none', className)}
-      draggable={false}
-    />
-  )
-}
 
 /**
  * Half-court geometry behind the branding panel. Decorative only, and kept at

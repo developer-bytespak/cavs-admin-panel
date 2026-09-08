@@ -191,6 +191,19 @@ check('login is light, not the dark arena surface', !login.includes('bg-midnight
 check('dashboard still renders without signing in', adminHome.includes('Academy participation'))
 check('sign out entry point exists', adminHome.includes('Sign out'))
 
+/* 11. One logo across the product — no fabricated placeholder marks. */
+const LOGO_SRC = '/cavs-logo-mark.avif'
+check('sidebar shows the real logo', adminHome.includes(LOGO_SRC))
+check('coach sidebar shows the real logo', coachHome.includes(LOGO_SRC))
+check('top bar shows the real logo', render('/teams', 'admin').includes(LOGO_SRC))
+check('help footer shows the real logo', render('/help', 'admin').includes(LOGO_SRC))
+check('sign-in shows the real logo', renderSignedOut('/signin').includes(LOGO_SRC))
+/* The hand-drawn stand-in used a distinctive path; it must be gone everywhere. */
+const FAKE_MARK = 'M7 4.3c2 1.9 3.2 4.5 3.2 7.7'
+for (const [name, html] of [['dashboard', adminHome], ['coach dashboard', coachHome], ['sign-in', renderSignedOut('/signin')], ['help', render('/help', 'admin')]]) {
+  check(`no placeholder basketball mark on ${name}`, !html.includes(FAKE_MARK))
+}
+
 console.log(fails ? `\n${fails} assertion(s) failed` : '\nAll assertions passed')
 process.exit(fails ? 1 : 0)
 
