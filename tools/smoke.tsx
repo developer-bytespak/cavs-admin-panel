@@ -170,8 +170,8 @@ check('signed in, /signin does not render the login form', !render('/signin', 'a
 
 /* 10. Sign-in screen. */
 const login = renderSignedOut('/signin')
-check('login uses the real Cavs logo asset', login.includes('/cavs_logo.avif'))
-check('login does not fall back to a placeholder mark', !login.includes('Cavs Academy</div>') || login.includes('/cavs_logo.avif'))
+check('login uses the supplied Cavs logo asset', login.includes('/cavs-logo-mark.avif'))
+check('logo is sized by height with width auto (no letterboxing)', login.includes('w-auto') && /h-\[\d+px\]/.test(login))
 check('login headline', login.includes('Run the Cavs.') && login.includes('From one place.'))
 check('login welcome copy', login.includes('Welcome back.') && login.includes('Sign in to your Cavs management account.'))
 check('email + password fields', login.includes('Email address') && login.includes('Password'))

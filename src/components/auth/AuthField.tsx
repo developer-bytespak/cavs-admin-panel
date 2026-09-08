@@ -65,16 +65,21 @@ export const AuthInput = React.forwardRef<
   )
 })
 
-/** The Cavs mark, used at the top of the branding panel and the mobile header. */
-export function CavsLogo({ className, size = 56 }: { className?: string; size?: number }) {
+/**
+ * The Cavs mark. Uses the padding-trimmed copy of the supplied logo: the original
+ * carries ~40px of transparent space top and bottom, so a third of any box it sits
+ * in renders empty and the mark reads far smaller than its height suggests.
+ * Height is driven by the caller's className with `w-auto`, so the aspect ratio is
+ * never fought over. Intrinsic dimensions are declared to avoid layout shift.
+ */
+export function CavsLogo({ className }: { className?: string }) {
   return (
     <img
-      src="/cavs_logo.avif"
+      src="/cavs-logo-mark.avif"
       alt="Cavs Youth Basketball"
-      width={size}
-      height={Math.round((size * 202) / 214)}
-      className={cn('select-none object-contain', className)}
-      style={{ height: size }}
+      width={192}
+      height={123}
+      className={cn('block w-auto select-none', className)}
       draggable={false}
     />
   )

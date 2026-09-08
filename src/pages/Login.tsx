@@ -71,18 +71,19 @@ function BrandPanel() {
       <CourtBackdrop className="text-navy opacity-[0.075]" />
 
       <div className="relative flex h-full min-h-full flex-col justify-between px-6 py-9 sm:px-10 sm:py-10 lg:px-14 lg:py-14">
-        {/* Logo lock-up */}
-        <motion.div custom={0} variants={rise} initial="hidden" animate="show" className="flex items-center gap-4">
-          <CavsLogo size={58} className="lg:!h-[74px]" />
-          <span className="h-10 w-px bg-line lg:h-12" />
-          <span>
-            <span className="block font-display text-[13px] font-semibold uppercase leading-none tracking-[0.16em] text-ink">
-              Cavs Youth Basketball
+        {/* Logo lock-up — the mark is a wordmark, so it leads and the type
+            sits under it rather than repeating "CAVS" beside it. */}
+        <motion.div custom={0} variants={rise} initial="hidden" animate="show">
+          <CavsLogo className="h-[62px] sm:h-[76px] lg:h-[92px]" />
+          <div className="mt-4 flex items-center gap-3">
+            <span className="h-px w-8 bg-[#D9DDE5]" />
+            <span className="font-display text-[12px] font-semibold uppercase leading-none tracking-[0.2em] text-ink-2 sm:text-[13px]">
+              Youth Basketball
             </span>
-            <span className="mt-1 block text-[10.5px] font-medium uppercase tracking-[0.14em] text-ink-3">
+            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-ink-4">
               Command Center
             </span>
-          </span>
+          </div>
         </motion.div>
 
         {/* Headline */}
